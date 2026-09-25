@@ -1,36 +1,38 @@
+import type { L } from "@/i18n/core";
+
 export type AutomationLevel = "documented" | "partly_automated" | "fully_automated";
 export type AgentStatus = "idle" | "working" | "blocked";
 export type TaskColumn = "backlog" | "todo" | "in_progress" | "review" | "done";
 
 export type ToolName =
   | "HubSpot"
-  | "Gmail"
+  | "Outlook"
+  | "Outlook Calendar"
+  | "Teams"
+  | "SharePoint"
+  | "Excel"
+  | "Planner"
+  | "Power Automate"
   | "Notion"
   | "Stripe"
-  | "Slack"
-  | "Google Drive"
-  | "Google Sheets"
-  | "Google Calendar"
+  | "Fortnox"
+  | "Scrive"
   | "LinkedIn"
   | "Canva"
   | "Webflow"
   | "Google Analytics"
-  | "Linear"
-  | "Zapier"
-  | "Xero"
-  | "DocuSign"
   | "1Password"
   | "Perplexity";
 
 export interface ProcessStep {
-  step: string;
+  step: L;
   automated: boolean;
 }
 
 export interface Agent {
   id: string;
   name: string;
-  role: string;
+  role: L;
   departmentId: string;
   reportsTo: string | null;
   process: ProcessStep[];
@@ -41,35 +43,21 @@ export interface Agent {
 
 export interface Department {
   id: string;
-  name: string;
-  subtitle: string;
+  name: L;
+  subtitle: L;
   color: string;
   agents: Agent[];
 }
 
 export interface Task {
   id: string;
-  title: string;
+  title: L;
   agentId: string;
   departmentId: string;
   column: TaskColumn;
 }
 
 export const TASK_COLUMNS: TaskColumn[] = ["backlog", "todo", "in_progress", "review", "done"];
-
-export const COLUMN_LABELS: Record<TaskColumn, string> = {
-  backlog: "Backlog",
-  todo: "To do",
-  in_progress: "In progress",
-  review: "Review",
-  done: "Done",
-};
-
-export const AUTOMATION_LABELS: Record<AutomationLevel, string> = {
-  documented: "Documented",
-  partly_automated: "Partly automated",
-  fully_automated: "Fully automated",
-};
 
 export const AUTOMATION_WEIGHT: Record<AutomationLevel, number> = {
   documented: 0,

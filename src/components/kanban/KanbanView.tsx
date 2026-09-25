@@ -14,7 +14,9 @@ import {
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { departments } from "@/data/org";
-import { COLUMN_LABELS, TASK_COLUMNS, type Agent, type Task, type TaskColumn } from "@/data/types";
+import { TASK_COLUMNS, type Agent, type Task, type TaskColumn } from "@/data/types";
+import { translate, useT } from "@/i18n";
+import { l } from "@/i18n/core";
 import { useOrgStore } from "@/store/useOrgStore";
 import { StatusDot } from "@/components/ui/badges";
 import DeptChips from "@/components/ui/DeptChips";
@@ -25,7 +27,15 @@ function moveByUser(task: Task, to: TaskColumn) {
   const s = useOrgStore.getState();
   if (task.column === to) return;
   s.moveTask(task.id, to);
-  s.log(task.agentId, `Moved by you → ${COLUMN_LABELS[to]} · ${task.title}`, "task");
+  const col = l(translate("en", `col.${to}`), translate("sv", `col.${to}`));
+  s.log(
+    task.agentId,
+    {
+      en: `${translate("en", "movedByYou")} → ${col.en} · ${task.title.en}`,
+      sv: `${translate("sv", "movedByYou")} → ${col.sv} · ${task.title.sv}`,
+    },
+    "task",
+  );
   if (to === "in_progress") s.setAgentStatus(task.agentId, "working");
 }
 
@@ -36,6 +46,7 @@ export default function KanbanView() {
   const setDragging = useOrgStore((s) => s.setDragging);
   const [filter, setFilter] = useState<string[]>(focusDeptId ? [focusDeptId] : []);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const { t } = useT();
 
   // Drilling into a department from the side panel scopes the board to it.
   useEffect(() => {
@@ -73,18 +84,16 @@ export default function KanbanView() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-end justify-between gap-4 px-6 pb-4 pt-5">
         <div>
-          <div className="label text-[10px] text-white/40">Kanban · all departments</div>
+          <div className="label text-[10px] text-white/40">{t("kanbanKicker")}</div>
           <h1 className="mt-1 flex items-center gap-3 font-mono text-[22px] font-semibold uppercase tracking-[0.18em] text-white">
-            Work in flight
+            {t("kanbanTitle")}
             <span className="flex items-center gap-1.5 rounded-full border border-[#ff5a1f]/30 bg-[#ff5a1f]/10 px-2 py-0.5 text-[9.5px] tracking-[0.16em] text-[#ff9a5c]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#ff5a1f]" /> Live
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#ff5a1f]" /> {t("live")}
             </span>
           </h1>
-          <p className="mt-0.5 text-[12px] text-white/45">
-            Drag cards between columns, or focus a card and use ← → to move it. Enter opens its agent.
-          </p>
+          <p className="mt-0.5 text-[12px] text-white/45">{t("kanbanHelp")}</p>
         </div>
-        <DeptChips label="Filter by department" selected={filter} onToggle={toggle} />
+        <DeptChips label={t("filterDept")} selected={filter} onToggle={toggle} />
       </div>
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
@@ -123,15 +132,16 @@ function Column({
   activeId: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column });
+  const { t } = useT();
   const idx = TASK_COLUMNS.indexOf(column);
   return (
     <section
       ref={setNodeRef}
-      aria-label={`${COLUMN_LABELS[column]}, ${tasks.length} tasks`}
+      aria-label={`${t(`col.${column}`)}, ${tasks.length} ${t("tasksWord")}`}
       className={`glass flex min-h-0 flex-col rounded-2xl transition-colors ${isOver ? "!border-[#ff5a1f]/70 bg-[#ff5a1f]/[0.06]" : ""}`}
     >
       <header className="flex items-center justify-between px-3.5 pb-2 pt-3">
-        <h2 className="label text-[10.5px] text-white/75">{COLUMN_LABELS[column]}</h2>
+        <h2 className="label text-[10.5px] text-white/75">{t(`col.${column}`)}</h2>
         <span className="rounded-full bg-white/[0.06] px-2 py-0.5 font-mono text-[10px] text-white/55">{tasks.length}</span>
       </header>
       <div
@@ -153,6 +163,7 @@ function Card({ task, agent, dimmed }: { task: Task; agent?: Agent; dimmed: bool
   const { attributes, listeners, setNodeRef } = useDraggable({ id: task.id });
   const flash = useOrgStore((s) => s.lastMovedTaskId === task.id);
   const selectAgent = useOrgStore((s) => s.selectAgent);
+  const { t, tx } = useT();
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const i = TASK_COLUMNS.indexOf(task.column);
@@ -177,7 +188,7 @@ function Card({ task, agent, dimmed }: { task: Task; agent?: Agent; dimmed: bool
       role="button"
       tabIndex={0}
       aria-roledescription="task card"
-      aria-label={`${task.title}. ${agent?.name ?? ""}, ${deptById.get(task.departmentId)?.name}. ${COLUMN_LABELS[task.column]}.`}
+      aria-label={`${tx(task.title)}. ${agent?.name ?? ""}, ${tx(deptById.get(task.departmentId)?.name ?? l("", ""))}. ${t(`col.${task.column}`)}.`}
       onKeyDown={onKeyDown}
       onClick={() => selectAgent(task.agentId)}
       className="cursor-grab touch-none rounded-xl outline-none active:cursor-grabbing"
@@ -190,6 +201,7 @@ function Card({ task, agent, dimmed }: { task: Task; agent?: Agent; dimmed: bool
 function CardBody({ task, agent, lifted, flash }: { task: Task; agent?: Agent; lifted?: boolean; flash?: boolean }) {
   const dept = deptById.get(task.departmentId);
   const color = dept?.color ?? "#ff5a1f";
+  const { tx } = useT();
   return (
     <div
       className={`relative overflow-hidden rounded-xl border bg-[#110c0c]/95 py-2.5 pl-3.5 pr-3 transition-shadow ${
@@ -198,14 +210,14 @@ function CardBody({ task, agent, lifted, flash }: { task: Task; agent?: Agent; l
       style={flash ? ({ "--flash": color, animation: "card-flash 1.8s ease-out" } as React.CSSProperties) : undefined}
     >
       <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
-      <div className="text-[12.5px] leading-snug text-white/90">{task.title}</div>
+      <div className="text-[12.5px] leading-snug text-white/90">{tx(task.title)}</div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-white/55">
           {agent && <StatusDot status={agent.status} />}
           <span className="truncate">{agent?.name}</span>
         </span>
         <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color }}>
-          {dept?.name}
+          {dept && tx(dept.name)}
         </span>
       </div>
     </div>

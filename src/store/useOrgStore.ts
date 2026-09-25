@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { allAgents, tasks as seedTasks } from "@/data/org";
 import type { Agent, AgentStatus, Task, TaskColumn } from "@/data/types";
+import { DEFAULT_LANG, type L, type Lang } from "@/i18n/core";
 
 export type View = "map" | "org" | "kanban" | "agents";
 
@@ -10,7 +11,7 @@ export interface ActivityEntry {
   id: number;
   agentId: string;
   at: number;
-  text: string;
+  text: L;
   kind: "kb" | "task" | "status";
 }
 
@@ -23,6 +24,7 @@ interface OrgState {
   kbReads: number;
 
   view: View;
+  lang: Lang;
   selectedAgentId: string | null;
   hoveredDeptId: string | null;
   focusDeptId: string | null;
@@ -33,8 +35,15 @@ interface OrgState {
   draggingTaskId: string | null;
   /** Last task the simulator moved, so the board can flash it. */
   lastMovedTaskId: string | null;
+  simPaused: boolean;
+  /** Presenter debug overlay (FPS / particle count). */
+  showHud: boolean;
+  askOpen: boolean;
+  /** Agents highlighted on the map during an "Ask the Knowledge Core" run. */
+  spotlightAgentIds: string[];
 
   setView: (v: View) => void;
+  setLang: (l: Lang) => void;
   selectAgent: (id: string | null) => void;
   hoverDept: (id: string | null) => void;
   focusDept: (id: string | null) => void;
@@ -43,12 +52,16 @@ interface OrgState {
   reset: () => void;
   setDragging: (id: string | null) => void;
   markMoved: (id: string | null) => void;
+  setSimPaused: (on: boolean) => void;
+  toggleHud: () => void;
+  setAskOpen: (on: boolean) => void;
+  setSpotlight: (ids: string[]) => void;
 
   moveTask: (taskId: string, column: TaskColumn) => void;
   addTask: (task: Task) => void;
   removeTask: (taskId: string) => void;
   setAgentStatus: (agentId: string, status: AgentStatus) => void;
-  log: (agentId: string, text: string, kind: ActivityEntry["kind"], at?: number) => void;
+  log: (agentId: string, text: L, kind: ActivityEntry["kind"], at?: number) => void;
   recordKbRead: () => void;
 }
 
@@ -65,6 +78,7 @@ export const useOrgStore = create<OrgState>((set) => ({
   ...freshData(),
 
   view: "map",
+  lang: DEFAULT_LANG,
   selectedAgentId: null,
   hoveredDeptId: null,
   focusDeptId: null,
@@ -73,8 +87,14 @@ export const useOrgStore = create<OrgState>((set) => ({
   resetNonce: 0,
   draggingTaskId: null,
   lastMovedTaskId: null,
+  simPaused: false,
+  showHud: false,
+  askOpen: false,
+  spotlightAgentIds: [],
 
-  setView: (view) => set({ view }),
+  setView: (view) =>
+    set((s) => (view === "map" ? { view } : { view, askOpen: false, spotlightAgentIds: s.askOpen ? [] : s.spotlightAgentIds })),
+  setLang: (lang) => set({ lang }),
   selectAgent: (selectedAgentId) => set({ selectedAgentId }),
   hoverDept: (hoveredDeptId) => set({ hoveredDeptId }),
   focusDept: (focusDeptId) => set({ focusDeptId }),
@@ -83,15 +103,23 @@ export const useOrgStore = create<OrgState>((set) => ({
   reset: () =>
     set((s) => ({
       ...freshData(),
+      view: "map",
       selectedAgentId: null,
       hoveredDeptId: null,
       focusDeptId: null,
       autoTour: false,
+      simPaused: false,
+      askOpen: false,
+      spotlightAgentIds: [],
       resetNonce: s.resetNonce + 1,
     })),
 
   setDragging: (draggingTaskId) => set({ draggingTaskId }),
   markMoved: (lastMovedTaskId) => set({ lastMovedTaskId }),
+  setSimPaused: (simPaused) => set({ simPaused }),
+  toggleHud: () => set((s) => ({ showHud: !s.showHud })),
+  setAskOpen: (askOpen) => set({ askOpen }),
+  setSpotlight: (spotlightAgentIds) => set({ spotlightAgentIds }),
 
   moveTask: (taskId, column) =>
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, column } : t)) })),

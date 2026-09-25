@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2, Minus, Plus } from "lucide-react";
 import { KNOWLEDGE_CORE_LABEL, departments } from "@/data/org";
-import { AUTOMATION_LABELS } from "@/data/types";
+import { useT } from "@/i18n";
 import { mono } from "@/app/fonts";
 import { simEvents } from "@/store/events";
 import { useOrgStore } from "@/store/useOrgStore";
@@ -14,12 +14,13 @@ interface Props {
   insetLeft: number;
   insetTop: number;
   insetRight: number;
+  insetBottom?: number;
 }
 
 const sameHit = (a: Hit, b: Hit) =>
   a === b || (!!a && !!b && a.kind === b.kind && (a.kind === "core" || (a as { index: number }).index === (b as { index: number }).index));
 
-export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
+export default function MapView({ insetLeft, insetTop, insetRight, insetBottom = 0 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<MapEngine | null>(null);
@@ -31,21 +32,28 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
 
   const layout = useMemo(() => computeLayout(departments), []);
   const agents = useOrgStore((s) => s.agents);
+  const showHud = useOrgStore((s) => s.showHud);
+  const { t, tx } = useT();
 
   // Stable node list for the keyboard overlay: core, then each hub followed by its agents.
   const focusables = useMemo(() => {
-    const list: { hit: NonNullable<Hit>; label: string }[] = [{ hit: { kind: "core" }, label: KNOWLEDGE_CORE_LABEL }];
+    const list: { hit: NonNullable<Hit> }[] = [{ hit: { kind: "core" } }];
     layout.hubs.forEach((h) => {
-      list.push({ hit: { kind: "hub", index: h.index }, label: `${h.name} department, ${h.agentCount} agents` });
-      layout.agents
-        .filter((a) => a.hubIndex === h.index)
-        .forEach((a) => {
-          const agent = departments[h.index].agents.find((x) => x.id === a.id)!;
-          list.push({ hit: { kind: "agent", index: a.index }, label: `${agent.name}, ${agent.role}` });
-        });
+      list.push({ hit: { kind: "hub", index: h.index } });
+      layout.agents.filter((a) => a.hubIndex === h.index).forEach((a) => list.push({ hit: { kind: "agent", index: a.index } }));
     });
     return list;
   }, [layout]);
+
+  const focusLabel = (hit: NonNullable<Hit>) => {
+    if (hit.kind === "core") return tx(KNOWLEDGE_CORE_LABEL);
+    if (hit.kind === "hub") {
+      const d = departments[hit.index];
+      return t("map.hubAria", { name: tx(d.name), n: d.agents.length });
+    }
+    const a = agents.find((x) => x.id === layout.agents[hit.index].id);
+    return a ? `${a.name}, ${tx(a.role)}` : "";
+  };
 
   const setHoverHit = (hit: Hit) => {
     const engine = engineRef.current;
@@ -123,12 +131,20 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
       engine.setStatuses(layout.agents.map((a) => s.agents.find((x) => x.id === a.id)?.status ?? "idle"));
       engine.highlightHub = hubIdx(s.hoveredDeptId);
       engine.selectedAgent = s.selectedAgentId ? (byId.get(s.selectedAgentId) ?? -1) : -1;
+      engine.lang = s.lang;
+      engine.setSpotlight(s.spotlightAgentIds.map((id) => byId.get(id) ?? -1).filter((i) => i >= 0));
     };
     syncFromStore();
     engine.focus(hubIdx(useOrgStore.getState().focusDeptId));
 
     const unsub = useOrgStore.subscribe((s, prev) => {
-      if (s.agents !== prev.agents || s.hoveredDeptId !== prev.hoveredDeptId || s.selectedAgentId !== prev.selectedAgentId) {
+      if (
+        s.agents !== prev.agents ||
+        s.hoveredDeptId !== prev.hoveredDeptId ||
+        s.selectedAgentId !== prev.selectedAgentId ||
+        s.lang !== prev.lang ||
+        s.spotlightAgentIds !== prev.spotlightAgentIds
+      ) {
         syncFromStore();
       }
       if (s.focusDeptId !== prev.focusDeptId) engine.focus(hubIdx(s.focusDeptId));
@@ -167,8 +183,8 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
   }, [layout, focusables]);
 
   useEffect(() => {
-    engineRef.current?.setInsets(insetLeft, insetTop, insetRight);
-  }, [insetLeft, insetTop, insetRight]);
+    engineRef.current?.setInsets(insetLeft, insetTop, insetRight, insetBottom);
+  }, [insetLeft, insetTop, insetRight, insetBottom]);
 
   /* ------------------------------ pointer ------------------------------ */
   const drag = useRef<{ x: number; y: number; moved: boolean; id: number } | null>(null);
@@ -221,7 +237,7 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
     const engine = engineRef.current;
     if (!engine) return;
     const cx = insetLeft + (engine.width - insetLeft - insetRight) / 2;
-    const cy = insetTop + (engine.height - insetTop) / 2;
+    const cy = insetTop + (engine.height - insetTop - insetBottom) / 2;
     const step = e.shiftKey ? 160 : 60;
     switch (e.key) {
       case "+":
@@ -262,7 +278,7 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
   const zoomButton = (factor: number) => {
     const engine = engineRef.current;
     if (!engine) return;
-    engine.zoomAt(insetLeft + (engine.width - insetLeft - insetRight) / 2, insetTop + (engine.height - insetTop) / 2, factor);
+    engine.zoomAt(insetLeft + (engine.width - insetLeft - insetRight) / 2, insetTop + (engine.height - insetTop - insetBottom) / 2, factor);
   };
 
   /* ------------------------------ tooltip ------------------------------ */
@@ -273,12 +289,12 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
       tip = (
         <>
           <div className="text-[13px] font-semibold text-white">{a.name}</div>
-          <div className="text-[11px] text-white/60">{a.role}</div>
+          <div className="text-[11px] text-white/60">{tx(a.role)}</div>
           <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em]">
-            <span className="text-orange-300">{AUTOMATION_LABELS[a.automationLevel]}</span>
+            <span className="text-orange-300">{t(`auto.${a.automationLevel}`)}</span>
             <span className="text-white/30">·</span>
             <span className={a.status === "blocked" ? "text-red-400" : a.status === "working" ? "text-amber-200" : "text-white/50"}>
-              {a.status}
+              {t(`status.${a.status}`)}
             </span>
           </div>
         </>
@@ -289,16 +305,16 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
     tip = (
       <>
         <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: d.color }}>
-          {d.name}
+          {tx(d.name)}
         </div>
-        <div className="text-[11px] text-white/60">Click to zoom into {d.agents.length} agents</div>
+        <div className="text-[11px] text-white/60">{t("map.hubHint", { n: d.agents.length })}</div>
       </>
     );
   } else if (hover?.kind === "core") {
     tip = (
       <>
-        <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-300">{KNOWLEDGE_CORE_LABEL}</div>
-        <div className="text-[11px] text-white/60">Shared by all {agents.length} agents · click to reset view</div>
+        <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-300">{tx(KNOWLEDGE_CORE_LABEL)}</div>
+        <div className="text-[11px] text-white/60">{t("map.coreHint", { n: agents.length })}</div>
       </>
     );
   }
@@ -309,7 +325,7 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
       className="noise absolute inset-0 overflow-hidden bg-[#07070a] outline-none"
       onKeyDown={onKeyDown}
       role="application"
-      aria-label="Organisation map. Tab through nodes, Enter to open. Plus and minus zoom, arrow keys pan, 0 resets."
+      aria-label={t("map.aria")}
     >
       <canvas
         ref={canvasRef}
@@ -336,7 +352,7 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
               focusBtnRefs.current[i] = el;
             }}
             type="button"
-            aria-label={f.label}
+            aria-label={focusLabel(f.hit)}
             className="map-focus absolute left-0 top-0 rounded-full"
             style={{
               width: f.hit.kind === "agent" ? 22 : f.hit.kind === "hub" ? 70 : 100,
@@ -364,26 +380,30 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
         style={{ left: insetLeft + 20 }}
       >
         <span className="flex items-center gap-1.5">
-          <i className="h-2 w-2 rounded-full bg-[#ffe6cf] shadow-[0_0_8px_#ff8a3d]" /> Working
+          <i className="h-2 w-2 rounded-full bg-[#ffe6cf] shadow-[0_0_8px_#ff8a3d]" /> {t("map.working")}
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="h-1.5 w-1.5 rounded-full bg-[#ff6a1f]/80" /> Idle
+          <i className="h-1.5 w-1.5 rounded-full bg-[#ff6a1f]/80" /> {t("map.idle")}
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="h-2 w-2 rounded-full bg-[#ff4a3a] ring-1 ring-red-500/70 ring-offset-1 ring-offset-black" /> Blocked
+          <i className="h-2 w-2 rounded-full bg-[#ff4a3a] ring-1 ring-red-500/70 ring-offset-1 ring-offset-black" /> {t("map.blocked")}
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="h-1.5 w-1.5 rounded-full bg-[#ffb020] shadow-[0_0_6px_#ffb020]" /> Knowledge read
+          <i className="h-1.5 w-1.5 rounded-full bg-[#ffb020] shadow-[0_0_6px_#ffb020]" /> {t("map.kbRead")}
         </span>
       </div>
 
-      <div className="absolute bottom-4 right-4 flex items-center gap-3">
-        <span ref={statsRef} className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35" aria-hidden />
+      <div className="absolute bottom-4 flex items-center gap-3 transition-[right] duration-300" style={{ right: insetRight + 16 }}>
+        <span
+          ref={statsRef}
+          className={`font-mono text-[10px] uppercase tracking-[0.16em] text-white/35 ${showHud ? "" : "hidden"}`}
+          aria-hidden
+        />
         <div className="glass flex overflow-hidden rounded-full">
-          <button type="button" className="map-ctl" onClick={() => zoomButton(1.25)} aria-label="Zoom in">
+          <button type="button" className="map-ctl" onClick={() => zoomButton(1.25)} aria-label={t("map.zoomIn")}>
             <Plus size={14} />
           </button>
-          <button type="button" className="map-ctl" onClick={() => zoomButton(0.8)} aria-label="Zoom out">
+          <button type="button" className="map-ctl" onClick={() => zoomButton(0.8)} aria-label={t("map.zoomOut")}>
             <Minus size={14} />
           </button>
           <button
@@ -393,7 +413,7 @@ export default function MapView({ insetLeft, insetTop, insetRight }: Props) {
               useOrgStore.getState().focusDept(null);
               engineRef.current?.resetView();
             }}
-            aria-label="Fit whole organisation"
+            aria-label={t("map.fit")}
           >
             <Maximize2 size={13} />
           </button>

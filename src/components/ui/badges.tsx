@@ -1,4 +1,7 @@
-import { AUTOMATION_LABELS, type AgentStatus, type AutomationLevel } from "@/data/types";
+"use client";
+
+import type { AgentStatus, AutomationLevel } from "@/data/types";
+import { useT } from "@/i18n";
 
 const AUTOMATION_STYLE: Record<AutomationLevel, string> = {
   fully_automated: "border-[#ff5a1f]/50 bg-[#ff5a1f]/15 text-[#ffab78]",
@@ -6,13 +9,13 @@ const AUTOMATION_STYLE: Record<AutomationLevel, string> = {
   documented: "border-white/15 bg-white/[0.04] text-white/55",
 };
 
-export function AutomationBadge({ level, short }: { level: AutomationLevel; short?: boolean }) {
-  const label = short ? AUTOMATION_LABELS[level].split(" ")[0] : AUTOMATION_LABELS[level];
+export function AutomationBadge({ level }: { level: AutomationLevel }) {
+  const { t } = useT();
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] ${AUTOMATION_STYLE[level]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.12em] ${AUTOMATION_STYLE[level]}`}
     >
-      {label}
+      {t(`auto.${level}`)}
     </span>
   );
 }
@@ -28,11 +31,12 @@ export function StatusDot({ status }: { status: AgentStatus }) {
 }
 
 export function StatusLabel({ status }: { status: AgentStatus }) {
+  const { t } = useT();
   const color = status === "working" ? "text-[#ffcf70]" : status === "blocked" ? "text-red-300" : "text-white/45";
   return (
     <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] ${color}`}>
       <StatusDot status={status} />
-      {status}
+      {t(`status.${status}`)}
     </span>
   );
 }

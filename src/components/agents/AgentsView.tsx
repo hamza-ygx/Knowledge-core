@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { departments } from "@/data/org";
 import type { Agent, AgentStatus, AutomationLevel } from "@/data/types";
 import { useOrgStore } from "@/store/useOrgStore";
+import { useT, type UIKey } from "@/i18n";
 import { AutomationBadge, StatusLabel } from "@/components/ui/badges";
 import DeptChips from "@/components/ui/DeptChips";
 import { TOOL_ICONS } from "@/components/drawer/toolIcons";
@@ -17,14 +18,14 @@ const deptById = new Map(departments.map((d) => [d.id, d]));
 const AUTOMATION_RANK: Record<AutomationLevel, number> = { documented: 0, partly_automated: 1, fully_automated: 2 };
 const STATUS_RANK: Record<AgentStatus, number> = { blocked: 0, working: 1, idle: 2 };
 
-const COLUMNS: { key: SortKey | null; label: string; className?: string }[] = [
-  { key: "name", label: "Agent" },
-  { key: "department", label: "Department" },
-  { key: null, label: "Reports to", className: "hidden xl:table-cell" },
-  { key: "automation", label: "Automation" },
-  { key: "status", label: "Status" },
-  { key: "tasks", label: "Open tasks", className: "text-right" },
-  { key: null, label: "Tools", className: "hidden lg:table-cell" },
+const COLUMNS: { key: SortKey | null; label: UIKey; className?: string }[] = [
+  { key: "name", label: "th.agent" },
+  { key: "department", label: "th.department" },
+  { key: null, label: "th.reportsTo", className: "hidden xl:table-cell" },
+  { key: "automation", label: "th.automation" },
+  { key: "status", label: "th.status" },
+  { key: "tasks", label: "th.tasks", className: "text-right" },
+  { key: null, label: "th.tools", className: "hidden lg:table-cell" },
 ];
 
 export default function AgentsView() {
@@ -34,6 +35,7 @@ export default function AgentsView() {
   const selectAgent = useOrgStore((s) => s.selectAgent);
   const selectedId = useOrgStore((s) => s.selectedAgentId);
 
+  const { t, tx } = useT();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string[]>(focusDeptId ? [focusDeptId] : []);
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: "department", dir: "asc" });
@@ -55,7 +57,15 @@ export default function AgentsView() {
     const list = agents.filter((a) => {
       if (filter.length && !filter.includes(a.departmentId)) return false;
       if (!q) return true;
-      const hay = [a.name, a.role, deptById.get(a.departmentId)?.name, a.status, a.automationLevel.replace("_", " "), ...a.tools]
+      const dept = deptById.get(a.departmentId);
+      const hay = [
+        a.name,
+        tx(a.role),
+        dept && tx(dept.name),
+        t(`status.${a.status}`),
+        t(`auto.${a.automationLevel}`),
+        ...a.tools,
+      ]
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
@@ -76,7 +86,7 @@ export default function AgentsView() {
     };
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...list].sort((a, b) => cmp(a, b) * dir || a.name.localeCompare(b.name));
-  }, [agents, filter, query, sort, openTasks]);
+  }, [agents, filter, query, sort, openTasks, t, tx]);
 
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -90,25 +100,25 @@ export default function AgentsView() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-end justify-between gap-4 px-6 pb-4 pt-5">
         <div>
-          <div className="label text-[10px] text-white/40">Directory</div>
+          <div className="label text-[10px] text-white/40">{t("directory")}</div>
           <h1 className="mt-1 font-mono text-[22px] font-semibold uppercase tracking-[0.18em] text-white">
-            Agents <span className="text-white/35">{rows.length}/{agents.length}</span>
+            {t("agentsTitle")} <span className="text-white/35">{rows.length}/{agents.length}</span>
           </h1>
         </div>
         <label className="glass flex w-full max-w-xs items-center gap-2 rounded-full px-3.5 py-2 focus-within:border-[#ff5a1f]/60">
           <Search size={14} className="text-white/40" aria-hidden />
-          <span className="sr-only">Search agents</span>
+          <span className="sr-only">{t("searchAria")}</span>
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, role, tool…"
+            placeholder={t("search")}
             className="w-full bg-transparent text-[13px] text-white placeholder:text-white/35 focus:outline-none"
           />
         </label>
       </div>
       <div className="px-6 pb-3">
-        <DeptChips label="Filter by department" selected={filter} onToggle={toggleDept} />
+        <DeptChips label={t("filterDept")} selected={filter} onToggle={toggleDept} />
       </div>
 
       <div className="scroll-thin min-h-0 flex-1 overflow-auto px-6 pb-6">
@@ -131,11 +141,11 @@ export default function AgentsView() {
                           onClick={() => toggleSort(c.key!)}
                           className={`inline-flex items-center gap-1.5 uppercase tracking-[0.16em] hover:text-white ${active ? "text-[#ff9a5c]" : ""}`}
                         >
-                          {c.label}
+                          {t(c.label)}
                           {active ? sort.dir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} /> : <ArrowUpDown size={11} className="opacity-40" />}
                         </button>
                       ) : (
-                        c.label
+                        t(c.label)
                       )}
                     </th>
                   );
@@ -156,17 +166,17 @@ export default function AgentsView() {
                     <td className="px-4 py-2.5">
                       <button type="button" onClick={() => selectAgent(a.id)} className="text-left">
                         <div className="text-[13px] font-medium text-white">{a.name}</div>
-                        <div className="text-[11.5px] text-white/50">{a.role}</div>
+                        <div className="text-[11.5px] text-white/50">{tx(a.role)}</div>
                       </button>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="inline-flex items-center gap-2 text-[12.5px] text-white/75">
                         <span className="h-2 w-2 rounded-full" style={{ background: dept.color, boxShadow: `0 0 6px ${dept.color}` }} />
-                        {dept.name}
+                        {tx(dept.name)}
                       </span>
                     </td>
                     <td className="hidden px-4 py-2.5 text-[12.5px] text-white/55 xl:table-cell">
-                      {a.reportsTo ? nameById.get(a.reportsTo) : <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#ffb020]">Lead</span>}
+                      {a.reportsTo ? nameById.get(a.reportsTo) : <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#ffb020]">{t("lead")}</span>}
                     </td>
                     <td className="px-4 py-2.5">
                       <AutomationBadge level={a.automationLevel} />
@@ -193,7 +203,7 @@ export default function AgentsView() {
               {!rows.length && (
                 <tr>
                   <td colSpan={COLUMNS.length} className="px-4 py-10 text-center text-[13px] text-white/40">
-                    No agents match “{query}”.
+                    {t("noMatch", { q: query })}
                   </td>
                 </tr>
               )}

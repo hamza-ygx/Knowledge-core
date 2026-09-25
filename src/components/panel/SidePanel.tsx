@@ -3,7 +3,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo } from "react";
-import { COMPANY_NAME, KNOWLEDGE_CORE_LABEL, departments } from "@/data/org";
+import { COMPANY_NAME, COMPANY_TAGLINE, KNOWLEDGE_CORE_LABEL, departments } from "@/data/org";
+import { useT } from "@/i18n";
 import type { Agent, AutomationLevel } from "@/data/types";
 import { automationScore, pct } from "@/lib/metrics";
 import { useOrgStore } from "@/store/useOrgStore";
@@ -23,6 +24,7 @@ export default function SidePanel() {
   const focusDept = useOrgStore((s) => s.focusDept);
   const setAutoTour = useOrgStore((s) => s.setAutoTour);
 
+  const { t, tx, lang } = useT();
   const overall = automationScore(agents);
 
   const rows = useMemo(
@@ -46,7 +48,7 @@ export default function SidePanel() {
 
   return (
     <motion.aside
-      aria-label="Departments"
+      aria-label={t("departments")}
       className="glass absolute bottom-4 left-4 top-[68px] z-20 flex flex-col overflow-hidden rounded-2xl"
       initial={false}
       animate={{ width: open ? PANEL_WIDTH : PANEL_RAIL }}
@@ -56,7 +58,7 @@ export default function SidePanel() {
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        aria-label={open ? "Collapse panel" : "Expand panel"}
+        aria-label={open ? t("collapse") : t("expand")}
         className="absolute right-2 top-2.5 z-10 grid h-7 w-7 place-items-center rounded-full text-white/50 hover:bg-white/5 hover:text-white"
       >
         {open ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
@@ -74,23 +76,24 @@ export default function SidePanel() {
             transition={{ duration: 0.15 }}
           >
             <div className="border-b border-white/5 px-5 pb-5 pt-4">
-              <div className="label text-[10px] text-[#ff8a4c]">{COMPANY_NAME}</div>
-              <div className="mt-3 text-[12px] text-white/55">Runs without you</div>
+              <div className="label text-[10px] text-[#ff8a4c]">{tx(COMPANY_NAME)}</div>
+              <div className="mt-0.5 text-[11px] text-white/40">{tx(COMPANY_TAGLINE)}</div>
+              <div className="mt-3 text-[12px] text-white/55">{t("runsWithoutYou")}</div>
               <div className="flex items-end justify-between">
                 <div className="bg-gradient-to-b from-[#ffd36a] to-[#ff5a1f] bg-clip-text font-mono text-[44px] font-semibold leading-none tracking-tight text-transparent">
                   {pct(overall)}
                 </div>
                 <div className="pb-1 text-right font-mono text-[10px] uppercase leading-4 tracking-[0.14em] text-white/40">
-                  {agents.length} agents
+                  {agents.length} {t("agentsWord")}
                   <br />
-                  {departments.length} departments
+                  {departments.length} {t("departmentsWord")}
                 </div>
               </div>
               <Bar value={overall} color="#ff5a1f" thick />
             </div>
 
             <div className="px-3 py-3">
-              <div className="label px-2 pb-2 text-[10px] text-white/40">Departments</div>
+              <div className="label px-2 pb-2 text-[10px] text-white/40">{t("departments")}</div>
               <ul className="flex flex-col gap-1">
                 {rows.map(({ dept, agents: own, score, openTasks }) => {
                   const active = hovered === dept.id || focused === dept.id;
@@ -113,14 +116,14 @@ export default function SidePanel() {
                             className="h-2 w-2 shrink-0 rounded-full"
                             style={{ background: dept.color, boxShadow: `0 0 8px ${dept.color}` }}
                           />
-                          <span className="flex-1 truncate text-[13px] font-medium text-white/90">{dept.name}</span>
-                          <span className="font-mono text-[10.5px] text-white/55">{pct(score)} automated</span>
+                          <span className="flex-1 truncate text-[13px] font-medium text-white/90">{tx(dept.name)}</span>
+                          <span className="font-mono text-[10.5px] text-white/55">{pct(score)} {t("automated")}</span>
                         </div>
                         <Bar value={score} color={dept.color} />
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <Pips agents={own} color={dept.color} />
                           <span className="shrink-0 font-mono text-[10px] text-white/40">
-                            {own.length} agents · {openTasks} tasks
+                            {own.length} {t("agentsWord")} · {openTasks} {t("tasksWord")}
                           </span>
                         </div>
                       </button>
@@ -135,12 +138,12 @@ export default function SidePanel() {
                   >
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 shrink-0 rounded-full bg-[#ffb020] shadow-[0_0_10px_#ffb020]" />
-                      <span className="flex-1 truncate text-[13px] font-medium text-white/90">{KNOWLEDGE_CORE_LABEL}</span>
-                      <span className="font-mono text-[10.5px] text-white/55">{kbReads.toLocaleString()} reads</span>
+                      <span className="flex-1 truncate text-[13px] font-medium text-white/90">{tx(KNOWLEDGE_CORE_LABEL)}</span>
+                      <span className="font-mono text-[10.5px] text-white/55">{kbReads.toLocaleString(lang === "sv" ? "sv-SE" : "en-GB")} {t("reads")}</span>
                     </div>
                     <KbBar reads={kbReads} />
                     <div className="mt-2 font-mono text-[10px] text-white/40">
-                      shared by {agents.length} agents · {departments.length} departments
+                      {t("sharedBy")} {agents.length} {t("agentsWord")} · {departments.length} {t("departmentsWord")}
                     </div>
                   </button>
                 </li>
@@ -149,13 +152,13 @@ export default function SidePanel() {
 
             <div className="mt-auto flex items-center gap-4 border-t border-white/5 px-5 py-3 font-mono text-[9.5px] uppercase tracking-[0.14em] text-white/40">
               <span className="flex items-center gap-1.5">
-                <Pip level="fully_automated" color="#ff8a4c" /> Fully
+                <Pip level="fully_automated" color="#ff8a4c" /> {t("legend.full")}
               </span>
               <span className="flex items-center gap-1.5">
-                <Pip level="partly_automated" color="#ff8a4c" /> Partly
+                <Pip level="partly_automated" color="#ff8a4c" /> {t("legend.part")}
               </span>
               <span className="flex items-center gap-1.5">
-                <Pip level="documented" color="#ff8a4c" /> Documented
+                <Pip level="documented" color="#ff8a4c" /> {t("legend.doc")}
               </span>
             </div>
           </motion.div>
@@ -172,8 +175,8 @@ export default function SidePanel() {
               <li key={d.id}>
                 <button
                   type="button"
-                  title={d.name}
-                  aria-label={d.name}
+                  title={tx(d.name)}
+                  aria-label={tx(d.name)}
                   onMouseEnter={() => hoverDept(d.id)}
                   onMouseLeave={() => hoverDept(null)}
                   onClick={() => drill(d.id)}

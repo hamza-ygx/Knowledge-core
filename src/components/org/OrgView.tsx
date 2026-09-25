@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo } from "react";
 import { departments } from "@/data/org";
+import { useT } from "@/i18n";
 import type { Agent } from "@/data/types";
 import { automationScore, pct } from "@/lib/metrics";
 import { useOrgStore } from "@/store/useOrgStore";
@@ -78,6 +79,7 @@ export default function OrgView() {
   const focusDept = useOrgStore((s) => s.focusDept);
   const selectAgent = useOrgStore((s) => s.selectAgent);
   const selectedId = useOrgStore((s) => s.selectedAgentId);
+  const { t, tx } = useT();
 
   const dept = departments.find((d) => d.id === focusDeptId) ?? departments[0];
   const own = useMemo(() => agents.filter((a) => a.departmentId === dept.id), [agents, dept.id]);
@@ -85,22 +87,22 @@ export default function OrgView() {
   const tree = useMemo(() => layoutTree(own), [dept.id]);
   const byId = new Map(own.map((a) => [a.id, a]));
   const posById = new Map(tree.placed.map((p) => [p.agent.id, p]));
-  const openTasks = (id: string) => tasks.filter((t) => t.agentId === id && t.column !== "done").length;
+  const openTasks = (id: string) => tasks.filter((task) => task.agentId === id && task.column !== "done").length;
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-end justify-between gap-4 px-6 pb-4 pt-5">
         <div>
-          <div className="label text-[10px] text-white/40">Org chart</div>
+          <div className="label text-[10px] text-white/40">{t("orgChart")}</div>
           <h1 className="mt-1 font-mono text-[22px] font-semibold uppercase tracking-[0.18em]" style={{ color: dept.color }}>
-            {dept.name}
+            {tx(dept.name)}
           </h1>
           <div className="mt-0.5 text-[12.5px] text-white/50">
-            {dept.subtitle} · {own.length} agents · {pct(automationScore(own))} automated ·{" "}
-            {tasks.filter((t) => t.departmentId === dept.id && t.column !== "done").length} open tasks
+            {tx(dept.subtitle)} · {own.length} {t("agentsWord")} · {pct(automationScore(own))} {t("automated")} ·{" "}
+            {tasks.filter((task) => task.departmentId === dept.id && task.column !== "done").length} {t("openTasks")}
           </div>
         </div>
-        <DeptChips label="Department" selected={[dept.id]} allowAll={false} onToggle={(id) => id && focusDept(id)} />
+        <DeptChips label={t("department")} selected={[dept.id]} allowAll={false} onToggle={(id) => id && focusDept(id)} />
       </div>
 
       <div className="scroll-thin min-h-0 flex-1 overflow-auto px-6 pb-10 pt-4">
@@ -152,7 +154,7 @@ export default function OrgView() {
                   key={a.id}
                   type="button"
                   onClick={() => selectAgent(a.id)}
-                  aria-label={`${a.name}, ${a.role}. ${a.status}. Open details`}
+                  aria-label={`${a.name}, ${tx(a.role)}. ${t(`status.${a.status}`)}. ${t("openDetails")}`}
                   className={`group absolute flex flex-col rounded-xl border bg-[#0d0a0a]/90 px-3.5 py-3 text-left backdrop-blur transition-[border-color,box-shadow] ${
                     selected
                       ? "border-[#ffb020] shadow-[0_0_24px_rgba(255,176,32,0.35)]"
@@ -166,13 +168,13 @@ export default function OrgView() {
                   <div className="flex items-center gap-2">
                     <StatusDot status={a.status} />
                     <span className="truncate text-[14px] font-semibold text-white">{a.name}</span>
-                    {p.depth === 0 && <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.16em] text-[#ffb020]">Lead</span>}
+                    {p.depth === 0 && <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.16em] text-[#ffb020]">{t("lead")}</span>}
                   </div>
-                  <div className="mt-0.5 truncate text-[12px] text-white/55">{a.role}</div>
+                  <div className="mt-0.5 truncate text-[12px] text-white/55">{tx(a.role)}</div>
                   <div className="mt-auto flex items-center justify-between gap-2">
                     <AutomationBadge level={a.automationLevel} />
                     <span className="font-mono text-[10px] text-white/40">
-                      {n} {n === 1 ? "task" : "tasks"}
+                      {n} {n === 1 ? t("task1") : t("taskN")}
                     </span>
                   </div>
                 </motion.button>

@@ -9,6 +9,7 @@ import {
   type SimulationNodeDatum,
 } from "d3-force";
 import type { Department } from "@/data/types";
+import type { L } from "@/i18n/core";
 
 export const HUB_RADIUS = 300;
 export const OUTER_RADIUS = 480;
@@ -23,8 +24,8 @@ export interface HubNode {
   y: number;
   angle: number;
   color: string;
-  name: string;
-  subtitle: string;
+  name: L;
+  subtitle: L;
   agentCount: number;
   /** Centroid of hub + agents; the camera frames this when drilling in. */
   cx: number;

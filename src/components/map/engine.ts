@@ -1,4 +1,5 @@
 import type { AgentStatus } from "@/data/types";
+import type { L, Lang } from "@/i18n/core";
 import {
   AGENT_SIZE,
   CORE_SIZE,
@@ -12,7 +13,7 @@ export type Hit = { kind: "core" } | { kind: "hub"; index: number } | { kind: "a
 
 export interface EngineOptions {
   monoFont: string;
-  coreLabel: string;
+  coreLabel: L;
   onFrame?: (engine: MapEngine) => void;
   onFps?: (fps: number) => void;
 }
@@ -82,6 +83,7 @@ export class MapEngine {
   private insetLeft = 0;
   private insetTop = 0;
   private insetRight = 0;
+  private insetBottom = 0;
 
   // camera: world point (x, y) at the viewport centre, scale k
   cam = { x: 0, y: 0, k: 1 };
@@ -95,6 +97,10 @@ export class MapEngine {
   hoverCore = false;
   highlightHub = -1;
   selectedAgent = -1;
+  lang: Lang = "sv";
+  /** Agents highlighted during "Ask the Knowledge Core"; everything else dims. */
+  spotlight = new Set<number>();
+  private spotHubs = new Set<number>();
   private statuses: Uint8Array;
   reducedMotion = false;
 
@@ -195,15 +201,21 @@ export class MapEngine {
     this.retarget(true);
   }
 
-  setInsets(left: number, top: number, right = 0) {
+  setInsets(left: number, top: number, right = 0, bottom = 0) {
     this.insetLeft = left;
     this.insetTop = top;
     this.insetRight = right;
+    this.insetBottom = bottom;
     this.retarget(false);
   }
 
   setStatuses(list: AgentStatus[]) {
     list.forEach((s, i) => (this.statuses[i] = STATUS_CODE[s]));
+  }
+
+  setSpotlight(indices: number[]) {
+    this.spotlight = new Set(indices);
+    this.spotHubs = new Set(indices.map((i) => this.layout.agents[i].hubIndex));
   }
 
   setReducedMotion(on: boolean) {
@@ -302,12 +314,12 @@ export class MapEngine {
   /* ----------------------------- internals ---------------------------- */
 
   private viewCenter(): [number, number] {
-    return [this.insetLeft + (this.width - this.insetLeft - this.insetRight) / 2, this.insetTop + (this.height - this.insetTop) / 2];
+    return [this.insetLeft + (this.width - this.insetLeft - this.insetRight) / 2, this.insetTop + (this.height - this.insetTop - this.insetBottom) / 2];
   }
 
   private fitScale() {
     const w = Math.max(200, this.width - this.insetLeft - this.insetRight - 48);
-    const h = Math.max(200, this.height - this.insetTop - 40);
+    const h = Math.max(200, this.height - this.insetTop - this.insetBottom - 40);
     return Math.min(w, h) / (OUTER_RADIUS * 2 + 40);
   }
 
@@ -322,7 +334,7 @@ export class MapEngine {
     if (this.focusHub >= 0) {
       const h = this.layout.hubs[this.focusHub];
       const w = this.width - this.insetLeft - this.insetRight;
-      const hh = this.height - this.insetTop;
+      const hh = this.height - this.insetTop - this.insetBottom;
       this.target = { x: h.cx, y: h.cy, k: Math.min(this.fitScale() * 2.6, Math.min(w, hh) / (h.extent * 2.9)) };
     } else {
       this.target = { x: 0, y: 0, k: this.fitScale() };
@@ -634,12 +646,13 @@ export class MapEngine {
     for (let e = 0; e < this.E; e++) {
       const hub = this.eHub[e];
       const isHub = e >= A;
-      const on = hl < 0 || hub === hl;
+      const spot = this.spotlight.size > 0;
+      const on = spot ? (isHub ? this.spotHubs.has(hub) : this.spotlight.has(e)) : hl < 0 || hub === hl;
       const hoverPath = this.hoverAgent >= 0 && (e === this.hoverAgent || (isHub && hub === this.layout.agents[this.hoverAgent].hubIndex));
       const selPath = this.selectedAgent >= 0 && e === this.selectedAgent;
       let a = isHub ? 0.34 : 0.22;
-      if (!on) a *= 0.25;
-      else if (hl >= 0) a *= 1.6;
+      if (!on) a *= spot ? 0.12 : 0.25;
+      else if (hl >= 0 || spot) a *= spot ? 2.6 : 1.6;
       if (hoverPath || selPath) a = 0.85;
       ctx.strokeStyle = isHub ? rgba(ORANGE, a) : rgba(this.layout.hubs[hub].color, a);
       ctx.lineWidth = (isHub ? 1.4 : 0.9) * px;
@@ -680,7 +693,10 @@ export class MapEngine {
       const kind = this.pKind[p];
       const fade = Math.min(1, t * 6, (1 - t) * 6);
       let a = kind === KIND_AMBIENT ? 0.72 : 1;
-      if (hl >= 0 && this.eHub[e] !== hl) a *= 0.22;
+      if (this.spotlight.size > 0) {
+        const lit = e >= this.layout.agents.length ? this.spotHubs.has(this.eHub[e]) : this.spotlight.has(e);
+        if (!lit) a *= 0.12;
+      } else if (hl >= 0 && this.eHub[e] !== hl) a *= 0.22;
       ctx.globalAlpha = a * fade;
       const s = Math.max(this.pSize[p], minSize) * (kind === KIND_KB ? 4.4 : 3.8);
       ctx.drawImage(this.particleSprites[this.pColor[p]], x - s, y - s, s * 2, s * 2);
@@ -759,8 +775,9 @@ export class MapEngine {
   private drawHubs(px: number, hl: number) {
     const ctx = this.ctx;
     for (const h of this.layout.hubs) {
-      const on = hl < 0 || hl === h.index;
-      const active = hl === h.index;
+      const spot = this.spotlight.size > 0;
+      const on = spot ? this.spotHubs.has(h.index) : hl < 0 || hl === h.index;
+      const active = spot ? this.spotHubs.has(h.index) : hl === h.index;
       const flash = this.hubFlash[h.index];
       const dim = on ? 1 : 0.35;
 
@@ -809,8 +826,8 @@ export class MapEngine {
       const x = this.ax[i];
       const y = this.ay[i];
       const status = this.statuses[i];
-      const on = hl < 0 || hl === a.hubIndex;
-      const dim = on ? 1 : 0.3;
+      const on = this.spotlight.size > 0 ? this.spotlight.has(i) : hl < 0 || hl === a.hubIndex;
+      const dim = on ? 1 : this.spotlight.size > 0 ? 0.18 : 0.3;
       const flash = this.agentFlash[i];
       const pulse = this.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3 + a.phase);
 
@@ -840,8 +857,8 @@ export class MapEngine {
         ctx.stroke();
       }
 
-      if (i === this.hoverAgent || i === this.selectedAgent) {
-        ctx.strokeStyle = rgba(GOLD, 0.95);
+      if (i === this.hoverAgent || i === this.selectedAgent || this.spotlight.has(i)) {
+        ctx.strokeStyle = rgba(GOLD, this.spotlight.has(i) ? 0.55 + pulse * 0.4 : 0.95);
         ctx.lineWidth = 1.5 * px;
         ctx.beginPath();
         ctx.arc(x, y, AGENT_SIZE + 6, 0, Math.PI * 2);
@@ -870,11 +887,11 @@ export class MapEngine {
     c.letterSpacing = "3px";
     ctx.font = `600 ${Math.round(11 * scale)}px ${font}`;
     ctx.fillStyle = "rgba(255,200,120,0.95)";
-    ctx.fillText(this.opts.coreLabel.toUpperCase(), csx, csy + coreR + 14 * scale);
+    ctx.fillText(this.opts.coreLabel[this.lang].toUpperCase(), csx, csy + coreR + 14 * scale);
 
     for (const h of this.layout.hubs) {
       const [sx, sy] = this.worldToScreen(h.x, h.y);
-      const on = hl < 0 || hl === h.index;
+      const on = this.spotlight.size > 0 ? this.spotHubs.has(h.index) : hl < 0 || hl === h.index;
       const r = HUB_SIZE * k;
       ctx.globalAlpha = on ? 1 : 0.4;
 
@@ -887,25 +904,31 @@ export class MapEngine {
       c.letterSpacing = "3px";
       ctx.font = `700 ${Math.round(11.5 * scale)}px ${font}`;
       ctx.fillStyle = h.color;
-      ctx.fillText(h.name.toUpperCase(), sx, base);
+      ctx.fillText(h.name[this.lang].toUpperCase(), sx, base);
       c.letterSpacing = "0.5px";
       ctx.font = `400 ${Math.round(10 * scale)}px ${font}`;
       ctx.fillStyle = "rgba(255,225,205,0.55)";
-      ctx.fillText(h.subtitle, sx, base + 15 * scale);
+      ctx.fillText(h.subtitle[this.lang], sx, base + 15 * scale);
     }
     ctx.globalAlpha = 1;
 
     // agent names once zoomed in enough
-    if (zoom > 1.6 || this.hoverAgent >= 0 || this.selectedAgent >= 0) {
+    if (zoom > 1.6 || this.hoverAgent >= 0 || this.selectedAgent >= 0 || this.spotlight.size > 0) {
       c.letterSpacing = "1.5px";
       ctx.font = `500 ${Math.round(10 * scale)}px ${font}`;
       ctx.textAlign = "left";
       for (let i = 0; i < this.layout.agents.length; i++) {
         const a = this.layout.agents[i];
-        const show = zoom > 1.6 ? hl < 0 || hl === a.hubIndex : i === this.hoverAgent || i === this.selectedAgent;
+        const show =
+          this.spotlight.size > 0
+            ? this.spotlight.has(i)
+            : zoom > 1.6
+              ? hl < 0 || hl === a.hubIndex
+              : i === this.hoverAgent || i === this.selectedAgent;
         if (!show) continue;
         const [sx, sy] = this.agentScreen(i);
-        ctx.fillStyle = i === this.hoverAgent || i === this.selectedAgent ? "#ffd48a" : "rgba(255,225,205,0.75)";
+        ctx.fillStyle =
+          i === this.hoverAgent || i === this.selectedAgent || this.spotlight.has(i) ? "#ffd48a" : "rgba(255,225,205,0.75)";
         const left = a.x < this.layout.hubs[a.hubIndex].x - 4;
         const gap = (AGENT_SIZE + 6) * k + 6;
         ctx.textAlign = left ? "right" : "left";
