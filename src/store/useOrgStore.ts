@@ -2,12 +2,12 @@
 
 import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { create } from "zustand";
-import type { Agent, AgentKind, AgentStatus, Department, ProcessStep, Run, RunStatus, Task, TaskColumn } from "@/data/types";
+import type { Agent, AgentKind, AgentStatus, Department, Intake, Priority, ProcessStep, Project, ProjectStatus, Run, RunStatus, Task, TaskColumn } from "@/data/types";
 import { supabase } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/database.types";
 import { mapEvents } from "./events";
 
-export type View = "map" | "org" | "tasks" | "runs";
+export type View = "map" | "org" | "tasks" | "projects" | "runs";
 
 type Tables = Database["public"]["Tables"];
 type Row<T extends keyof Tables> = Tables[T]["Row"];
@@ -71,6 +71,34 @@ const toRun = (r: Row<"runs">): Run => ({
   error: r.error,
 });
 
+const toProject = (r: Row<"projects">): Project => ({
+  id: r.id,
+  name: r.name,
+  status: r.status as ProjectStatus,
+  priority: r.priority as Priority,
+  summary: r.summary,
+  currentWork: r.current_work,
+  nextSteps: r.next_steps,
+  location: r.location,
+  links: r.links,
+  target: r.target,
+  notes: r.notes,
+  position: r.position,
+  updatedAt: r.updated_at,
+});
+
+const toIntake = (r: Row<"intakes">): Intake => ({
+  id: r.id,
+  text: r.text,
+  files: (Array.isArray(r.files) ? r.files : []) as Intake["files"],
+  status: r.status as Intake["status"],
+  summary: r.summary,
+  error: r.error,
+  createdAt: r.created_at,
+});
+
+const byCreatedDesc = (a: Intake, b: Intake) => b.createdAt.localeCompare(a.createdAt);
+
 const byPosition = <T extends { position: number }>(a: T, b: T) => a.position - b.position;
 const byStartDesc = (a: Run, b: Run) => b.startedAt.localeCompare(a.startedAt);
 
@@ -104,6 +132,7 @@ export type NewAgent = Pick<Agent, "departmentId" | "name"> & Partial<Pick<Agent
 export type ModalState =
   | { type: "department"; id?: string }
   | { type: "agent"; departmentId?: string; reportsTo?: string }
+  | { type: "project"; id?: string }
   | { type: "task"; id?: string; column?: TaskColumn; title?: string; agentId?: string | null; departmentId?: string | null }
   | null;
 
@@ -117,6 +146,8 @@ interface OrgState {
   steps: ProcessStep[];
   tasks: Task[];
   runs: Run[];
+  projects: Project[];
+  intakes: Intake[];
 
   view: View;
   selectedAgentId: string | null;
@@ -161,6 +192,10 @@ interface OrgState {
   addTask: (t: NewTask) => Promise<string | null>;
   updateTask: (id: string, patch: Partial<Omit<Task, "id">>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+
+  saveProject: (id: string | null, patch: Partial<Omit<Project, "id" | "position" | "updatedAt">>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  deleteIntake: (id: string) => Promise<void>;
 }
 
 let toastSeq = 0;
@@ -192,8 +227,8 @@ export const useOrgStore = create<OrgState>((set, get) => {
     set((s) => ({ agents: s.agents.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
 
   const snapshot = () => {
-    const { departments, agents, steps, tasks, runs } = get();
-    return { departments, agents, steps, tasks, runs };
+    const { departments, agents, steps, tasks, runs, projects, intakes } = get();
+    return { departments, agents, steps, tasks, runs, projects, intakes };
   };
 
   return {
@@ -204,6 +239,8 @@ export const useOrgStore = create<OrgState>((set, get) => {
     steps: [],
     tasks: [],
     runs: [],
+    projects: [],
+    intakes: [],
 
     view: "map",
     selectedAgentId: null,
@@ -236,14 +273,16 @@ export const useOrgStore = create<OrgState>((set, get) => {
     /* ------------------------------ load ------------------------------ */
     load: async () => {
       const db = supabase();
-      const [d, a, s, t, r] = await Promise.all([
+      const [d, a, s, t, r, p, i] = await Promise.all([
         db.from("departments").select("*"),
         db.from("agents").select("*"),
         db.from("process_steps").select("*"),
         db.from("tasks").select("*"),
         db.from("runs").select("*").order("started_at", { ascending: false }).limit(MAX_RUNS),
+        db.from("projects").select("*"),
+        db.from("intakes").select("*").order("created_at", { ascending: false }).limit(50),
       ]);
-      const error = d.error ?? a.error ?? s.error ?? t.error ?? r.error;
+      const error = d.error ?? a.error ?? s.error ?? t.error ?? r.error ?? p.error ?? i.error;
       if (error) {
         set({ ready: true, loadError: error.message });
         return;
@@ -256,6 +295,8 @@ export const useOrgStore = create<OrgState>((set, get) => {
         steps: (s.data ?? []).map(toStep).sort(byPosition),
         tasks: (t.data ?? []).map(toTask).sort(byPosition),
         runs: (r.data ?? []).map(toRun),
+        projects: (p.data ?? []).map(toProject).sort(byPosition),
+        intakes: (i.data ?? []).map(toIntake),
       });
     },
 
@@ -264,7 +305,7 @@ export const useOrgStore = create<OrgState>((set, get) => {
       const db = supabase();
       const handle =
         <T extends keyof Tables, U extends { id: string }>(
-          key: "departments" | "agents" | "steps" | "tasks",
+          key: "departments" | "agents" | "steps" | "tasks" | "projects",
           map: (r: Row<T>) => U,
         ) =>
         (p: RealtimePostgresChangesPayload<Row<T>>) => {
@@ -294,6 +335,13 @@ export const useOrgStore = create<OrgState>((set, get) => {
         .on("postgres_changes", { event: "*", schema: "public", table: "process_steps" }, handle<"process_steps", ProcessStep>("steps", toStep))
         .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, handle<"tasks", Task>("tasks", toTask))
         .on("postgres_changes", { event: "*", schema: "public", table: "runs" }, onRun)
+        .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, handle<"projects", Project>("projects", toProject))
+        .on("postgres_changes", { event: "*", schema: "public", table: "intakes" }, (p: RealtimePostgresChangesPayload<Row<"intakes">>) => {
+          if (p.eventType === "DELETE") {
+            const id = (p.old as { id?: string }).id;
+            set((s) => ({ intakes: s.intakes.filter((x) => x.id !== id) }));
+          } else set((s) => ({ intakes: upsert(s.intakes, toIntake(p.new as Row<"intakes">)).sort(byCreatedDesc) }));
+        })
         .subscribe();
 
       return () => {
@@ -562,6 +610,72 @@ export const useOrgStore = create<OrgState>((set, get) => {
         () => set(prev),
         () => supabase().from("tasks").delete().eq("id", id),
         "delete the task",
+      );
+    },
+
+    /* ----------------------------- projects ----------------------------- */
+    saveProject: async (id, patch) => {
+      const row: Tables["projects"]["Update"] = { updated_at: new Date().toISOString() };
+      if (patch.name !== undefined) row.name = patch.name;
+      if (patch.status !== undefined) row.status = patch.status;
+      if (patch.priority !== undefined) row.priority = patch.priority;
+      if (patch.summary !== undefined) row.summary = patch.summary;
+      if (patch.currentWork !== undefined) row.current_work = patch.currentWork;
+      if (patch.nextSteps !== undefined) row.next_steps = patch.nextSteps;
+      if (patch.location !== undefined) row.location = patch.location;
+      if (patch.links !== undefined) row.links = patch.links;
+      if (patch.target !== undefined) row.target = patch.target;
+      if (patch.notes !== undefined) row.notes = patch.notes;
+      const prev = snapshot();
+      if (id) {
+        await commit(
+          () => set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: row.updated_at! } : p)) })),
+          () => set(prev),
+          () => supabase().from("projects").update(row).eq("id", id),
+          "save the project",
+        );
+        return;
+      }
+      const newId = crypto.randomUUID();
+      const position = Math.max(0, ...get().projects.map((p) => p.position)) + 1000;
+      const project: Project = {
+        id: newId,
+        name: patch.name ?? "Untitled project",
+        status: patch.status ?? "upcoming",
+        priority: patch.priority ?? "medium",
+        summary: patch.summary ?? "",
+        currentWork: patch.currentWork ?? "",
+        nextSteps: patch.nextSteps ?? [],
+        location: patch.location ?? "",
+        links: patch.links ?? [],
+        target: patch.target ?? "",
+        notes: patch.notes ?? "",
+        position,
+        updatedAt: row.updated_at!,
+      };
+      await commit(
+        () => set((s) => ({ projects: [...s.projects, project] })),
+        () => set(prev),
+        () => supabase().from("projects").insert({ ...row, id: newId, name: project.name, position }),
+        "add the project",
+      );
+    },
+    deleteProject: async (id) => {
+      const prev = snapshot();
+      await commit(
+        () => set((s) => ({ projects: s.projects.filter((p) => p.id !== id) })),
+        () => set(prev),
+        () => supabase().from("projects").delete().eq("id", id),
+        "delete the project",
+      );
+    },
+    deleteIntake: async (id) => {
+      const prev = snapshot();
+      await commit(
+        () => set((s) => ({ intakes: s.intakes.filter((i) => i.id !== id) })),
+        () => set(prev),
+        () => supabase().from("intakes").delete().eq("id", id),
+        "delete the inbox item",
       );
     },
   };

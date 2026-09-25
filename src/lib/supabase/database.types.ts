@@ -89,6 +89,102 @@ export type Database = {
         };
         Relationships: [];
       };
+      intakes: {
+        Row: {
+          created_at: string;
+          error: string | null;
+          files: Json;
+          id: string;
+          links: string;
+          owner_id: string;
+          processed_at: string | null;
+          status: string;
+          summary: string | null;
+          text: string;
+        };
+        Insert: {
+          created_at?: string;
+          error?: string | null;
+          files?: Json;
+          id?: string;
+          links?: string;
+          owner_id?: string;
+          processed_at?: string | null;
+          status?: string;
+          summary?: string | null;
+          text?: string;
+        };
+        Update: {
+          created_at?: string;
+          error?: string | null;
+          files?: Json;
+          id?: string;
+          links?: string;
+          owner_id?: string;
+          processed_at?: string | null;
+          status?: string;
+          summary?: string | null;
+          text?: string;
+        };
+        Relationships: [];
+      };
+      projects: {
+        Row: {
+          created_at: string;
+          current_work: string;
+          id: string;
+          last_intake_id: string | null;
+          links: string[];
+          location: string;
+          name: string;
+          next_steps: string[];
+          notes: string;
+          owner_id: string;
+          position: number;
+          priority: string;
+          status: string;
+          summary: string;
+          target: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          current_work?: string;
+          id?: string;
+          last_intake_id?: string | null;
+          links?: string[];
+          location?: string;
+          name: string;
+          next_steps?: string[];
+          notes?: string;
+          owner_id?: string;
+          position?: number;
+          priority?: string;
+          status?: string;
+          summary?: string;
+          target?: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          current_work?: string;
+          id?: string;
+          last_intake_id?: string | null;
+          links?: string[];
+          location?: string;
+          name?: string;
+          next_steps?: string[];
+          notes?: string;
+          owner_id?: string;
+          position?: number;
+          priority?: string;
+          status?: string;
+          summary?: string;
+          target?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       process_steps: {
         Row: {
           agent_id: string;

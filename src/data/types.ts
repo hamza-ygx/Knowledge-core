@@ -92,3 +92,45 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
 
 /** Warm palette offered when creating a department. */
 export const DEPARTMENT_COLORS = ["#ff6a1f", "#ff3d5e", "#ffb020", "#ff2d1f", "#ffd25e", "#ff8c5a", "#e8743b", "#ff9fb0"];
+
+export type ProjectStatus = "live" | "active" | "upcoming" | "idea" | "paused" | "done";
+export type Priority = "high" | "medium" | "low";
+
+export interface Project {
+  id: string;
+  name: string;
+  status: ProjectStatus;
+  priority: Priority;
+  summary: string;
+  currentWork: string;
+  nextSteps: string[];
+  location: string;
+  links: string[];
+  target: string;
+  notes: string;
+  position: number;
+  updatedAt: string;
+}
+
+export interface Intake {
+  id: string;
+  text: string;
+  files: { name: string; size: number; kind: string; note: string | null }[];
+  status: "pending" | "processing" | "done" | "failed";
+  summary: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export const PROJECT_STATUS_ORDER: ProjectStatus[] = ["active", "live", "upcoming", "paused", "idea", "done"];
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  live: "Live",
+  active: "Being worked on",
+  upcoming: "Up next",
+  idea: "Ideas",
+  paused: "Paused",
+  done: "Done",
+};
+
+export const PRIORITY_LABELS: Record<Priority, string> = { high: "High", medium: "Medium", low: "Low" };

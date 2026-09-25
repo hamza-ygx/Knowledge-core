@@ -2,7 +2,19 @@
 
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
-import { DEPARTMENT_COLORS, KIND_LABELS, TASK_COLUMNS, COLUMN_LABELS, type AgentKind, type TaskColumn } from "@/data/types";
+import {
+  DEPARTMENT_COLORS,
+  KIND_LABELS,
+  PRIORITY_LABELS,
+  PROJECT_STATUS_LABELS,
+  PROJECT_STATUS_ORDER,
+  TASK_COLUMNS,
+  COLUMN_LABELS,
+  type AgentKind,
+  type Priority,
+  type ProjectStatus,
+  type TaskColumn,
+} from "@/data/types";
 import { useOrgStore, type ModalState } from "@/store/useOrgStore";
 import { Button, Field, Modal, inputCls } from "@/components/ui/form";
 
@@ -19,6 +31,9 @@ export default function Modals() {
       </Modal>
       <Modal open={modal?.type === "agent"} title="New agent" onClose={close}>
         {modal?.type === "agent" && <AgentForm key={key} modal={modal} onDone={close} />}
+      </Modal>
+      <Modal open={modal?.type === "project"} title={modal?.type === "project" && modal.id ? "Edit project" : "New project"} onClose={close} width={560}>
+        {modal?.type === "project" && <ProjectForm key={key} modal={modal} onDone={close} />}
       </Modal>
       <Modal open={modal?.type === "task"} title={modal?.type === "task" && modal.id ? "Edit task" : "New task"} onClose={close} width={520}>
         {modal?.type === "task" && <TaskForm key={key} modal={modal} onDone={close} />}
@@ -281,6 +296,122 @@ function TaskForm({ modal, onDone }: { modal: Extract<ModalState, { type: "task"
         )}
         <Button tone="primary" type="submit" disabled={!title.trim()}>
           {existing ? "Save" : "Add task"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/* ------------------------------- project ------------------------------ */
+
+function ProjectForm({ modal, onDone }: { modal: Extract<ModalState, { type: "project" }>; onDone: () => void }) {
+  const existing = useOrgStore((s) => s.projects.find((p) => p.id === modal.id));
+  const [name, setName] = useState(existing?.name ?? "");
+  const [status, setStatus] = useState<ProjectStatus>(existing?.status ?? "upcoming");
+  const [priority, setPriority] = useState<Priority>(existing?.priority ?? "medium");
+  const [summary, setSummary] = useState(existing?.summary ?? "");
+  const [currentWork, setCurrentWork] = useState(existing?.currentWork ?? "");
+  const [nextSteps, setNextSteps] = useState((existing?.nextSteps ?? []).join("\n"));
+  const [location, setLocation] = useState(existing?.location ?? "");
+  const [links, setLinks] = useState((existing?.links ?? []).join("\n"));
+  const [target, setTarget] = useState(existing?.target ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const lines = (v: string) =>
+    v
+      .split("\n")
+      .map((l) => l.replace(/^[-•*]\s*/, "").trim())
+      .filter(Boolean)
+      .slice(0, 30);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    await useOrgStore.getState().saveProject(existing?.id ?? null, {
+      name: name.trim().slice(0, 120),
+      status,
+      priority,
+      summary,
+      currentWork,
+      nextSteps: lines(nextSteps),
+      location,
+      links: lines(links),
+      target: target.trim(),
+      notes,
+    });
+    onDone();
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <Field label="Name">
+        <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required />
+      </Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Status">
+          <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
+            {PROJECT_STATUS_ORDER.map((s) => (
+              <option key={s} value={s}>
+                {PROJECT_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Priority">
+          <select className={inputCls} value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+            {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Target">
+          <input className={inputCls} value={target} onChange={(e) => setTarget(e.target.value)} maxLength={120} placeholder="e.g. Dec 2026" />
+        </Field>
+      </div>
+      <Field label="Summary">
+        <textarea className={`${inputCls} min-h-[60px] resize-y`} value={summary} onChange={(e) => setSummary(e.target.value)} maxLength={2000} />
+      </Field>
+      <Field label="Being worked on">
+        <textarea className={`${inputCls} min-h-[50px] resize-y`} value={currentWork} onChange={(e) => setCurrentWork(e.target.value)} maxLength={2000} />
+      </Field>
+      <Field label="Next steps" hint="One per line.">
+        <textarea className={`${inputCls} min-h-[80px] resize-y`} value={nextSteps} onChange={(e) => setNextSteps(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Where it lives">
+          <input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} maxLength={500} placeholder="e.g. black USB / GitHub repo" />
+        </Field>
+        <Field label="Links" hint="One per line.">
+          <textarea className={`${inputCls} min-h-[38px] resize-y font-mono text-[12px]`} value={links} onChange={(e) => setLinks(e.target.value)} />
+        </Field>
+      </div>
+      <Field label="Notes">
+        <textarea className={`${inputCls} min-h-[50px] resize-y`} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} />
+      </Field>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        {existing ? (
+          confirmDelete ? (
+            <Button
+              tone="danger"
+              onClick={async () => {
+                await useOrgStore.getState().deleteProject(existing.id);
+                onDone();
+              }}
+            >
+              Delete for good
+            </Button>
+          ) : (
+            <Button onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={13} /> Delete
+            </Button>
+          )
+        ) : (
+          <span />
+        )}
+        <Button tone="primary" type="submit" disabled={!name.trim()}>
+          {existing ? "Save" : "Add project"}
         </Button>
       </div>
     </form>

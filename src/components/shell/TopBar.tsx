@@ -11,6 +11,7 @@ const TABS: { id: View; label: string }[] = [
   { id: "map", label: "Map" },
   { id: "org", label: "Org" },
   { id: "tasks", label: "Tasks" },
+  { id: "projects", label: "Projects" },
   { id: "runs", label: "Runs" },
 ];
 

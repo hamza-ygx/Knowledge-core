@@ -7,6 +7,7 @@ import MapView from "@/components/map/MapView";
 import Onboarding, { useOnboardingVisible } from "@/components/onboarding/Onboarding";
 import Modals from "@/components/org/Modals";
 import OrgView from "@/components/org/OrgView";
+import ProjectsView from "@/components/projects/ProjectsView";
 import SidePanel, { PANEL_RAIL, PANEL_WIDTH } from "@/components/panel/SidePanel";
 import RunsView from "@/components/runs/RunsView";
 import TasksView from "@/components/tasks/TasksView";
@@ -15,7 +16,7 @@ import TopBar from "./TopBar";
 
 const TOP_INSET = 60;
 const DRAWER_INSET = 440 + 24;
-const VIEW_KEYS: Record<string, View> = { "1": "map", "2": "org", "3": "tasks", "4": "runs" };
+const VIEW_KEYS: Record<string, View> = { "1": "map", "2": "org", "3": "tasks", "4": "projects", "5": "runs" };
 
 function useShortcuts() {
   useEffect(() => {
@@ -102,6 +103,7 @@ export default function AppShell({ email }: { email: string }) {
                   >
                     {view === "org" && <OrgView />}
                     {view === "tasks" && <TasksView />}
+                    {view === "projects" && <ProjectsView />}
                     {view === "runs" && <RunsView />}
                   </div>
                 )}

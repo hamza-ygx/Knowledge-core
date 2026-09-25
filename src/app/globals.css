@@ -89,6 +89,28 @@ body {
   letter-spacing: 0.18em;
 }
 
+/* Printable pages scroll on screen and flow across pages on paper */
+.print-page {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+}
+@media print {
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  .print-page {
+    position: static;
+    overflow: visible;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
