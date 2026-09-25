@@ -14,16 +14,16 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase (Postgres, Aut
 
 1. **Supabase.** Create a project and apply the migrations in `supabase/migrations/` in order.
 2. **Env vars.** Copy `.env.example` to `.env.local` and fill it in. Add the same three variables in Vercel under Project → Settings → Environment Variables.
-3. **Supabase Auth settings.** In the dashboard, under Authentication:
-   - **URL Configuration.** Set the Site URL to your deployed URL. Add `https://YOUR-DOMAIN/auth/callback` and `http://localhost:3000/auth/callback` to the Redirect URLs.
-   - **Sign In / Providers → Email.** Keep email enabled. Turn **off** "Allow new users to sign up" once your own account exists.
+3. **Create your account.** No email is ever sent, so company mail filters don't matter.
+   - Supabase dashboard → **Authentication → Users → Add user → Create new user**. Enter your email and a strong password, and tick **Auto Confirm User**.
+   - Then open **Authentication → Sign In / Providers**, keep **Email** enabled, and turn **off** "Allow new users to sign up". Your own account keeps working; nobody else can create one.
 4. **Run it.**
    ```bash
    npm install
    npm run dev        # http://localhost:3000
    ```
 
-Sign in with a magic link. Only addresses listed in `ALLOWED_EMAILS` get a link. The form answers the same way for every address, so it can't be used to find out which ones are allowed.
+Sign in with email and password. Only addresses listed in `ALLOWED_EMAILS` can sign in, and every failed attempt gets the same "Wrong email or password" message. To change your password, use the key button in the top bar (at least 12 characters).
 
 ## Views
 
@@ -95,8 +95,7 @@ src/
   proxy.ts                    session refresh + sign-in redirect (Next 16 "proxy")
   app/
     page.tsx                  signed-in app
-    login/                    magic-link sign-in + sign-out action
-    auth/callback/route.ts    exchanges the magic-link code, enforces the allowlist
+    login/                    email + password sign-in (allowlist) and sign-out
     api/hooks/[agentId]/      webhook endpoint
   lib/
     supabase/                 browser/server clients, env, generated DB types

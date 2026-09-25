@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export const inputCls =
   "w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[13.5px] text-white placeholder:text-white/30 focus:border-[#ff5a1f]/70 focus:outline-none";
@@ -54,6 +55,8 @@ export function Modal({
   width?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
@@ -74,7 +77,9 @@ export function Modal({
     };
   }, [open]);
 
-  return (
+  if (!mounted) return null;
+  // Portal to <body> so dialogs always sit above panels and drawers.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -114,7 +119,8 @@ export function Modal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 

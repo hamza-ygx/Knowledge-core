@@ -1,9 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { LogOut } from "lucide-react";
-import { useRef } from "react";
-import { signOut } from "@/app/login/actions";
+import { KeyRound, LogOut } from "lucide-react";
+import { useRef, useState } from "react";
+import { changePassword, signOut } from "@/app/login/actions";
+import { Button, Field, Modal, inputCls } from "@/components/ui/form";
 import { useOrgStore, type View } from "@/store/useOrgStore";
 
 const TABS: { id: View; label: string }[] = [
@@ -79,6 +80,7 @@ export default function TopBar({ email }: { email: string }) {
 
       <div className="pointer-events-auto flex items-center gap-2">
         <span className="hidden truncate font-mono text-[10px] text-white/40 xl:inline">{email}</span>
+        <PasswordButton />
         <form action={signOut}>
           <button
             type="submit"
@@ -89,5 +91,61 @@ export default function TopBar({ email }: { email: string }) {
         </form>
       </div>
     </header>
+  );
+}
+
+function PasswordButton() {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    setOpen(false);
+    setPw("");
+    setPw2("");
+    setError(null);
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pw !== pw2) return setError("The passwords don't match.");
+    setBusy(true);
+    const res = await changePassword(pw);
+    setBusy(false);
+    if (res.error) return setError(res.error);
+    close();
+    useOrgStore.getState().showToast("Password changed.", "info");
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Change password"
+        title="Change password"
+        className="glass grid h-[30px] w-[30px] place-items-center rounded-full text-white/60 hover:text-white"
+      >
+        <KeyRound size={13} />
+      </button>
+      <Modal open={open} title="Change password" onClose={close} width={400}>
+        <form onSubmit={save} className="space-y-4">
+          <Field label="New password" hint="At least 12 characters.">
+            <input type="password" autoComplete="new-password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} required />
+          </Field>
+          <Field label="Repeat it">
+            <input type="password" autoComplete="new-password" className={inputCls} value={pw2} onChange={(e) => setPw2(e.target.value)} required />
+          </Field>
+          {error && <p className="text-[12.5px] text-red-300">{error}</p>}
+          <div className="flex justify-end">
+            <Button tone="primary" type="submit" disabled={busy || !pw}>
+              {busy ? "Saving…" : "Change password"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </>
   );
 }

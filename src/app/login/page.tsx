@@ -1,9 +1,16 @@
+import { redirect } from "next/navigation";
+import { serverSupabase } from "@/lib/supabase/server";
 import LoginForm from "./LoginForm";
 
 export const metadata = { title: "Sign in · Agent Org Map" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function LoginPage() {
+  const supabase = await serverSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) redirect("/");
+
   return (
     <main className="noise relative grid h-dvh place-items-center overflow-hidden bg-[#07070a] px-4">
       <div
@@ -19,8 +26,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <span className="label text-[11px] font-semibold text-white/85">Agent Org Map</span>
         </div>
         <h1 className="mt-5 text-[22px] font-semibold text-white">Sign in</h1>
-        <p className="mt-1 text-[13px] text-white/55">We&apos;ll email you a one-time sign-in link.</p>
-        {error && <p className="mt-4 rounded-lg bg-red-500/10 px-3 py-2 text-[12.5px] text-red-300">That link didn&apos;t work. Request a new one.</p>}
         <LoginForm />
       </div>
     </main>
