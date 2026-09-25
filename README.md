@@ -12,12 +12,14 @@ npm run build && npm start
 
 ## Views
 
-| View | Status |
+| View | What it does |
 | --- | --- |
-| **Map**: a radial galaxy on `<canvas>` with pan/zoom, hub drill-in, agent tooltips and live particles | ✅ |
-| **Org**: a per-department org chart built from `reportsTo` | next |
-| **Kanban**: one live board across all departments | next |
-| **Agents**: a searchable, sortable table | next |
+| **Map** | A radial galaxy on `<canvas>`. Pan and zoom, click a hub to drill in, hover agents for tooltips. Live particles show tasks and knowledge-base reads. |
+| **Org** | A per-department org chart built from `reportsTo`, with a department picker. Connectors animate while an agent is working. |
+| **Kanban** | One board across all departments, with filter chips. The simulator moves a task every 2–4 s and a moved card flashes. You can drag cards (dnd-kit) or move a focused card with `←`/`→`. |
+| **Agents** | A searchable table of all agents (search matches name, role, department and tools). Sort by name, department, automation, status or open tasks. |
+
+Clicking a department in the side panel scopes the current view to it: the map zooms in, and the Org, Kanban and Agents views filter to that department.
 
 Clicking an agent opens the **Agent drawer** from the right. It shows the agent's details, automation level, process stepper, tools, tasks and activity log.
 
@@ -45,7 +47,10 @@ src/
     panel/             left side panel
     drawer/            agent drawer
     shell/             top bar, app shell
-    org/ kanban/ agents/
+    org/               OrgView (tidy tree + SVG connectors)
+    kanban/            KanbanView (dnd-kit + Framer Motion layout animations)
+    agents/            AgentsView (search, sort, filter)
+    ui/                shared badges and department chips
 ```
 
 ## Editing `org.ts` to model your own company

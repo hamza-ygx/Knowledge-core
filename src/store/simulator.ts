@@ -62,13 +62,16 @@ function statusChange(at?: number) {
 function advanceTask(emit: boolean, at?: number) {
   const s = useOrgStore.getState();
   const blocked = new Set(s.agents.filter((a) => a.status === "blocked").map((a) => a.id));
-  const movable = s.tasks.filter((t) => t.column !== "done" && !blocked.has(t.agentId));
+  const movable = s.tasks.filter(
+    (t) => t.column !== "done" && !blocked.has(t.agentId) && t.id !== s.draggingTaskId,
+  );
   if (!movable.length) return;
 
   const task = pick(movable);
   const to = nextColumn(task.column);
   if (!to) return;
   s.moveTask(task.id, to);
+  if (emit) s.markMoved(task.id);
 
   const verb: Record<TaskColumn, string> = {
     backlog: "Queued",
@@ -91,7 +94,8 @@ function advanceTask(emit: boolean, at?: number) {
   }
 
   const done = useOrgStore.getState().tasks.filter((t) => t.column === "done");
-  if (done.length > MAX_DONE) s.removeTask(done[0].id);
+  const oldest = done.find((t) => t.id !== s.draggingTaskId);
+  if (done.length > MAX_DONE && oldest) s.removeTask(oldest.id);
 }
 
 function spawnTask(emit: boolean, at?: number) {

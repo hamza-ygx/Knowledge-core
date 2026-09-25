@@ -2,12 +2,14 @@
 
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import AgentsView from "@/components/agents/AgentsView";
 import AgentDrawer from "@/components/drawer/AgentDrawer";
+import KanbanView from "@/components/kanban/KanbanView";
 import MapView from "@/components/map/MapView";
+import OrgView from "@/components/org/OrgView";
 import SidePanel, { PANEL_RAIL, PANEL_WIDTH } from "@/components/panel/SidePanel";
 import { useAutoTour, useSimulation } from "@/store/simulator";
 import { useOrgStore, type View } from "@/store/useOrgStore";
-import ComingNext from "./ComingNext";
 import TopBar from "./TopBar";
 
 const TOP_INSET = 60;
@@ -53,16 +55,13 @@ export default function AppShell() {
             {view === "map" ? (
               mounted && <MapView insetLeft={insetLeft} insetTop={TOP_INSET} insetRight={drawerOpen ? DRAWER_INSET : 0} />
             ) : (
-              <div className="absolute inset-0 noise" style={{ paddingLeft: insetLeft, paddingTop: TOP_INSET }}>
-                {view === "org" && (
-                  <ComingNext title="Org chart" detail="Per-department org chart built from reportsTo, with a department picker." />
-                )}
-                {view === "kanban" && (
-                  <ComingNext title="Kanban" detail="One live board across all departments with drag-and-drop and simulated flow." />
-                )}
-                {view === "agents" && (
-                  <ComingNext title="Agents" detail="Searchable, sortable table of all agents." />
-                )}
+              <div
+                className="noise absolute inset-0 transition-[padding] duration-300"
+                style={{ paddingLeft: insetLeft, paddingTop: TOP_INSET, paddingRight: drawerOpen ? DRAWER_INSET : 0 }}
+              >
+                {view === "org" && <OrgView />}
+                {view === "kanban" && <KanbanView />}
+                {view === "agents" && <AgentsView />}
               </div>
             )}
           </motion.div>

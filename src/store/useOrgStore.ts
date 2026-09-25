@@ -29,6 +29,10 @@ interface OrgState {
   autoTour: boolean;
   panelOpen: boolean;
   resetNonce: number;
+  /** Task currently held by the user in the Kanban; the simulator leaves it alone. */
+  draggingTaskId: string | null;
+  /** Last task the simulator moved, so the board can flash it. */
+  lastMovedTaskId: string | null;
 
   setView: (v: View) => void;
   selectAgent: (id: string | null) => void;
@@ -37,6 +41,8 @@ interface OrgState {
   setAutoTour: (on: boolean) => void;
   togglePanel: () => void;
   reset: () => void;
+  setDragging: (id: string | null) => void;
+  markMoved: (id: string | null) => void;
 
   moveTask: (taskId: string, column: TaskColumn) => void;
   addTask: (task: Task) => void;
@@ -65,6 +71,8 @@ export const useOrgStore = create<OrgState>((set) => ({
   autoTour: false,
   panelOpen: true,
   resetNonce: 0,
+  draggingTaskId: null,
+  lastMovedTaskId: null,
 
   setView: (view) => set({ view }),
   selectAgent: (selectedAgentId) => set({ selectedAgentId }),
@@ -81,6 +89,9 @@ export const useOrgStore = create<OrgState>((set) => ({
       autoTour: false,
       resetNonce: s.resetNonce + 1,
     })),
+
+  setDragging: (draggingTaskId) => set({ draggingTaskId }),
+  markMoved: (lastMovedTaskId) => set({ lastMovedTaskId }),
 
   moveTask: (taskId, column) =>
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, column } : t)) })),
