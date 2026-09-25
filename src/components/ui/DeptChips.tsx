@@ -1,7 +1,6 @@
 "use client";
 
-import { departments } from "@/data/org";
-import { useT } from "@/i18n";
+import { useOrgStore } from "@/store/useOrgStore";
 
 interface Props {
   /** Selected department ids. Empty = all. */
@@ -12,7 +11,7 @@ interface Props {
 }
 
 export default function DeptChips({ selected, onToggle, allowAll = true, label }: Props) {
-  const { t, tx } = useT();
+  const departments = useOrgStore((s) => s.departments);
   const chip = (active: boolean) =>
     `flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] transition-colors ${
       active ? "border-[#ff5a1f]/60 bg-[#ff5a1f]/15 text-white" : "border-white/10 bg-white/[0.03] text-white/55 hover:text-white"
@@ -22,7 +21,7 @@ export default function DeptChips({ selected, onToggle, allowAll = true, label }
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
       {allowAll && (
         <button type="button" aria-pressed={selected.length === 0} onClick={() => onToggle(null)} className={chip(selected.length === 0)}>
-          {t("all")}
+          All
         </button>
       )}
       {departments.map((d) => {
@@ -30,7 +29,7 @@ export default function DeptChips({ selected, onToggle, allowAll = true, label }
         return (
           <button key={d.id} type="button" aria-pressed={active} onClick={() => onToggle(d.id)} className={chip(active)}>
             <span className="h-2 w-2 rounded-full" style={{ background: d.color, boxShadow: `0 0 6px ${d.color}` }} />
-            {tx(d.name)}
+            {d.name}
           </button>
         );
       })}

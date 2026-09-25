@@ -89,28 +89,6 @@ body {
   letter-spacing: 0.18em;
 }
 
-/* Dashes travelling down org-chart connectors */
-.org-flow {
-  animation: org-flow 1.6s linear infinite;
-}
-@keyframes org-flow {
-  to {
-    stroke-dashoffset: -34;
-  }
-}
-
-/* Kanban card the simulator just moved */
-@keyframes card-flash {
-  0% {
-    box-shadow:
-      0 0 0 1px var(--flash),
-      0 0 26px var(--flash);
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

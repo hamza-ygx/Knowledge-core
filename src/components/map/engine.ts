@@ -1,5 +1,4 @@
 import type { AgentStatus } from "@/data/types";
-import type { L, Lang } from "@/i18n/core";
 import {
   AGENT_SIZE,
   CORE_SIZE,
@@ -13,7 +12,7 @@ export type Hit = { kind: "core" } | { kind: "hub"; index: number } | { kind: "a
 
 export interface EngineOptions {
   monoFont: string;
-  coreLabel: L;
+  coreLabel: string;
   onFrame?: (engine: MapEngine) => void;
   onFps?: (fps: number) => void;
 }
@@ -30,8 +29,9 @@ const KIND_TASK = 2;
 const STATUS_CODE: Record<AgentStatus, number> = { idle: 0, working: 1, blocked: 2 };
 
 const MAX_PARTICLES = 1400;
-const AMBIENT_TARGET = 720;
-const AMBIENT_TARGET_REDUCED = 140;
+// Calm mode: no background traffic. Particles only appear for real run events.
+const AMBIENT_TARGET = 0;
+const AMBIENT_TARGET_REDUCED = 0;
 
 /* ---------------------------- sprite cache --------------------------- */
 
@@ -97,11 +97,11 @@ export class MapEngine {
   hoverCore = false;
   highlightHub = -1;
   selectedAgent = -1;
-  lang: Lang = "sv";
   /** Agents highlighted during "Ask the Knowledge Core"; everything else dims. */
   spotlight = new Set<number>();
   private spotHubs = new Set<number>();
   private statuses: Uint8Array;
+  private automation: Float32Array;
   reducedMotion = false;
 
   // node positions after drift
@@ -149,6 +149,7 @@ export class MapEngine {
     const H = layout.hubs.length;
     this.E = A + H;
     this.statuses = new Uint8Array(A);
+    this.automation = new Float32Array(A);
     this.ax = new Float32Array(A);
     this.ay = new Float32Array(A);
     this.agentFlash = new Float32Array(A);
@@ -216,6 +217,11 @@ export class MapEngine {
   setSpotlight(indices: number[]) {
     this.spotlight = new Set(indices);
     this.spotHubs = new Set(indices.map((i) => this.layout.agents[i].hubIndex));
+  }
+
+  /** Share of automated process steps per agent (0–1), drawn as an arc around the dot. */
+  setAutomation(values: number[]) {
+    values.forEach((v, i) => (this.automation[i] = v));
   }
 
   setReducedMotion(on: boolean) {
@@ -291,6 +297,15 @@ export class MapEngine {
     }
   }
 
+  /** A run finished: stream back into the core, gold on success, red on failure. */
+  emitRunResult(agentIndex: number, ok: boolean) {
+    this.agentFlash[agentIndex] = 1;
+    const n = this.reducedMotion ? 2 : 7;
+    for (let i = 0; i < n; i++) {
+      this.spawn(agentIndex, -i * 0.09, 1, KIND_KB, ok ? 2 : 1, 0.55 + Math.random() * 0.15, 1.6 + Math.random() * 0.8);
+    }
+  }
+
   /** Task handed in (agent → core) or out (core → agent). */
   emitTaskFlow(agentIndex: number, direction: "in" | "out") {
     const A = this.layout.agents.length;
@@ -335,7 +350,7 @@ export class MapEngine {
       const h = this.layout.hubs[this.focusHub];
       const w = this.width - this.insetLeft - this.insetRight;
       const hh = this.height - this.insetTop - this.insetBottom;
-      this.target = { x: h.cx, y: h.cy, k: Math.min(this.fitScale() * 2.6, Math.min(w, hh) / (h.extent * 2.9)) };
+      this.target = { x: h.cx, y: h.cy, k: Math.min(this.fitScale() * 2.2, Math.min(w, hh) / (Math.max(h.extent, 170) * 2.9)) };
     } else {
       this.target = { x: 0, y: 0, k: this.fitScale() };
     }
@@ -650,7 +665,7 @@ export class MapEngine {
       const on = spot ? (isHub ? this.spotHubs.has(hub) : this.spotlight.has(e)) : hl < 0 || hub === hl;
       const hoverPath = this.hoverAgent >= 0 && (e === this.hoverAgent || (isHub && hub === this.layout.agents[this.hoverAgent].hubIndex));
       const selPath = this.selectedAgent >= 0 && e === this.selectedAgent;
-      let a = isHub ? 0.34 : 0.22;
+      let a = isHub ? 0.42 : 0.3;
       if (!on) a *= spot ? 0.12 : 0.25;
       else if (hl >= 0 || spot) a *= spot ? 2.6 : 1.6;
       if (hoverPath || selPath) a = 0.85;
@@ -849,6 +864,21 @@ export class MapEngine {
       ctx.fill();
       ctx.globalAlpha = 1;
 
+      const auto = this.automation[i];
+      ctx.globalAlpha = dim;
+      ctx.lineWidth = 1.6 * px;
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.beginPath();
+      ctx.arc(x, y, AGENT_SIZE + 3.2, 0, Math.PI * 2);
+      ctx.stroke();
+      if (auto > 0) {
+        ctx.strokeStyle = rgba(GOLD, 0.9);
+        ctx.beginPath();
+        ctx.arc(x, y, AGENT_SIZE + 3.2, -Math.PI / 2, -Math.PI / 2 + auto * Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
       if (status === 2) {
         ctx.strokeStyle = rgba("#ff2a1a", 0.4 + pulse * 0.5);
         ctx.lineWidth = 1.2 * px;
@@ -887,7 +917,7 @@ export class MapEngine {
     c.letterSpacing = "3px";
     ctx.font = `600 ${Math.round(11 * scale)}px ${font}`;
     ctx.fillStyle = "rgba(255,200,120,0.95)";
-    ctx.fillText(this.opts.coreLabel[this.lang].toUpperCase(), csx, csy + coreR + 14 * scale);
+    ctx.fillText(this.opts.coreLabel.toUpperCase(), csx, csy + coreR + 14 * scale);
 
     for (const h of this.layout.hubs) {
       const [sx, sy] = this.worldToScreen(h.x, h.y);
@@ -904,11 +934,11 @@ export class MapEngine {
       c.letterSpacing = "3px";
       ctx.font = `700 ${Math.round(11.5 * scale)}px ${font}`;
       ctx.fillStyle = h.color;
-      ctx.fillText(h.name[this.lang].toUpperCase(), sx, base);
+      ctx.fillText(h.name.toUpperCase(), sx, base);
       c.letterSpacing = "0.5px";
       ctx.font = `400 ${Math.round(10 * scale)}px ${font}`;
       ctx.fillStyle = "rgba(255,225,205,0.55)";
-      ctx.fillText(h.subtitle[this.lang], sx, base + 15 * scale);
+      ctx.fillText(h.subtitle, sx, base + 15 * scale);
     }
     ctx.globalAlpha = 1;
 

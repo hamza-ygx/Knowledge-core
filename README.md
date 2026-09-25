@@ -1,144 +1,113 @@
 # Agent Org Map
 
-A visual control room for a company run by AI agents. It shows 37 agents in 6 departments, all connected to one shared **Knowledge Core**.
+A working control room for your own AI agents and automations. Use it to:
 
-It is set up as an **event demo**: a fictional company ("Exempelbolaget AB" / "Example Co."), placeholder customer names ("Demo Bygg AB" and so on), Swedish and English with Swedish as the default, and a scripted "Ask the Knowledge Core" sequence. All data is simulated.
+- **Plan automation.** Map your departments and agents, and list each agent's process steps. Mark each step as manual or automated to get a real "Runs without you" percentage.
+- **Track work.** Keep a task board. Any manual step can become an "Automate: …" task in one click.
+- **Monitor runs.** Every agent gets a webhook. Scripts, Power Automate, Zapier or GitHub Actions report when a run starts, succeeds or fails. The Runs view and the map update live.
 
-Stack: Next.js (App Router), TypeScript, Tailwind CSS v4, d3-force, Framer Motion, Zustand and dnd-kit. There is no backend. A client-side tick loop simulates the live activity.
+The simulated event demo lives on the **`event-demo`** branch.
 
-```bash
-npm install
-npm run dev        # http://localhost:3000
-npm run build && npm start
-```
+Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase (Postgres, Auth and Realtime), d3-force + canvas for the map, Framer Motion, Zustand and dnd-kit.
+
+## Setup
+
+1. **Supabase.** Create a project and apply the migrations in `supabase/migrations/` in order.
+2. **Env vars.** Copy `.env.example` to `.env.local` and fill it in. Add the same three variables in Vercel under Project → Settings → Environment Variables.
+3. **Supabase Auth settings.** In the dashboard, under Authentication:
+   - **URL Configuration.** Set the Site URL to your deployed URL. Add `https://YOUR-DOMAIN/auth/callback` and `http://localhost:3000/auth/callback` to the Redirect URLs.
+   - **Sign In / Providers → Email.** Keep email enabled. Turn **off** "Allow new users to sign up" once your own account exists.
+4. **Run it.**
+   ```bash
+   npm install
+   npm run dev        # http://localhost:3000
+   ```
+
+Sign in with a magic link. Only addresses listed in `ALLOWED_EMAILS` get a link. The form answers the same way for every address, so it can't be used to find out which ones are allowed.
 
 ## Views
 
-| View | What it does |
+| Key | View | What it does |
+| --- | --- | --- |
+| `1` | **Map** | The organisation as a calm radial map. The arc around each agent shows its automated share. A pulse travels out on every run start and back into the core when the run ends (red if it failed). |
+| `2` | **Org** | Org chart per department, built from "reports to". Add and edit departments and agents here. The **Automation backlog** on the right lists every manual step, each with a button that creates a task. |
+| `3` | **Tasks** | A board from Backlog to Done. Add, edit, assign and drag cards, or move a focused card with ← →. |
+| `4` | **Runs** | A live feed of runs with per-agent stats: 7-day success rate, run count and average duration. Click a row to see the summary, error and output. |
+
+Click an agent anywhere to open its panel. There you can edit its details and process steps, see its open tasks, and manage its webhook. `D` shows an FPS counter on the map.
+
+## Reporting runs from an agent
+
+In the agent panel, click **Connect webhook**. It creates a token that is **shown once**. Only its SHA-256 hash is stored.
+
+```bash
+curl -X POST https://YOUR-DOMAIN/api/hooks/AGENT_ID \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"event":"started","run_id":"run-123"}'
+
+curl -X POST https://YOUR-DOMAIN/api/hooks/AGENT_ID \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"event":"succeeded","run_id":"run-123","summary":"Sent 4 invoices","output":{"count":4}}'
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `event` | yes | `started`, `succeeded` or `failed` |
+| `run_id` | no | Use the same id for start and finish; the duration is then calculated |
+| `summary` | no | Up to 2,000 characters |
+| `error` | no | Up to 5,000 characters, shown in red |
+| `output` | no | Any JSON; the whole request body is capped at 64 KB |
+| `timestamp` | no | ISO 8601 with a timezone; defaults to now |
+
+The endpoint returns:
+
+| Status | Meaning |
 | --- | --- |
-| **Map** | A radial galaxy on `<canvas>`. Pan and zoom, click a hub to drill in, hover agents for tooltips. Live particles show tasks and knowledge-base reads. |
-| **Org** | A per-department org chart built from `reportsTo`, with a department picker. Connectors animate while an agent is working. |
-| **Kanban** | One board across all departments, with filter chips. The simulator moves a task every 2–4 s and a moved card flashes. You can drag cards (dnd-kit) or move a focused card with `←`/`→`. |
-| **Agents** | A searchable table of all agents (search matches name, role, department and tools). Sort by name, department, automation, status or open tasks. |
+| `200` | Recorded |
+| `400` | Invalid body |
+| `401` | Wrong or missing token |
+| `404` | Unknown agent id |
+| `413` | Body over 64 KB |
 
-Clicking a department in the side panel scopes the current view to it: the map zooms in, and the Org, Kanban and Agents views filter to that department.
+The agent's status on the map follows its runs:
 
-Clicking an agent opens the **Agent drawer** from the right. It shows the agent's details, automation level, process stepper, tools, tasks and activity log.
-
-### Ask the Knowledge Core
-
-The glowing **Fråga kunskapskärnan / Ask the Knowledge Core** button on the map (or `K`) opens a panel with preset questions. Picking one plays a short sequence:
-1. The question travels from the core out to the agents involved.
-2. Each agent lights up in turn and reads the knowledge base, while the rest of the map dims.
-3. Everything streams back into the core, and the answer is typed out with its sources and the agents involved.
-
-The questions, steps, answers and sources live in `src/data/askCore.ts`.
-
-### Presenting at an event
-
-| Key | Action |
+| Latest event | Status |
 | --- | --- |
-| `1`–`4` | Switch views (`←`/`→` also move between the view tabs) |
-| `K` | Open Ask the Knowledge Core |
-| `L` | Switch language SV ⇄ EN (also the SV/EN switch in the top bar) |
-| `P` | Pause or resume the simulation |
-| `F` | Fullscreen |
-| `D` | Show or hide the FPS and particle counter |
-| `Esc` | Close the drawer or the Ask panel, or reset the map camera |
+| started | running |
+| succeeded | idle |
+| failed | failed |
 
-On the map, `Tab` moves through core → hubs → agents and `Enter` opens the focused node. `+`/`-` zoom, the arrow keys pan (hold `Shift` for bigger steps), and `0` resets the camera.
+**Test run** and **Test failure** in the agent panel simulate a run without a real agent.
 
-**Booth mode:** after 90 seconds without mouse or keyboard input, the demo closes any open panels, goes back to the map and starts Auto tour. Change `IDLE_MS` in `components/shell/AppShell.tsx` to adjust the delay. The chosen language is remembered in the browser.
+## Security model
+
+- **Row level security** is on every table: a signed-in user only ever sees and changes their own rows. Composite foreign keys also stop one user's rows from pointing at another user's data.
+- **Webhook writes** go through the `ingest_run` Postgres function (`security definer`, fixed `search_path`). It checks the token hash before touching any data, so no service-role key exists anywhere in the app.
+- The **publishable key** is the only key the app needs, and it's safe to expose.
+- **Webhook bodies** are validated with zod and capped at 64 KB.
 
 ## Project structure
 
 ```
 src/
-  app/                 layout, fonts, global styles
-  data/
-    types.ts           Department / Agent / Task types
-    org.ts             ← the seed file you edit
-    askCore.ts         ← scripted "Ask the Knowledge Core" questions
-  i18n/                SV/EN: l("English", "Svenska") helper + UI dictionary
+  proxy.ts                    session refresh + sign-in redirect (Next 16 "proxy")
+  app/
+    page.tsx                  signed-in app
+    login/                    magic-link sign-in + sign-out action
+    auth/callback/route.ts    exchanges the magic-link code, enforces the allowlist
+    api/hooks/[agentId]/      webhook endpoint
+  lib/
+    supabase/                 browser/server clients, env, generated DB types
+    metrics.ts                automation score, ordering helpers
   store/
-    useOrgStore.ts     Zustand store (agents, tasks, activity, UI state)
-    simulator.ts       live tick loop + auto tour
-    events.ts          effect bus (map particles) that never triggers React renders
-  lib/metrics.ts       automation score
+    useOrgStore.ts            data + UI state, instant local updates, realtime sync
+    events.ts                 run pulses for the map (no React renders)
   components/
-    map/               layout.ts (d3-force, precomputed), engine.ts (canvas renderer), MapView.tsx
-    panel/             left side panel
-    drawer/            agent drawer
-    shell/             top bar, app shell
-    org/               OrgView (tidy tree + SVG connectors)
-    kanban/            KanbanView (dnd-kit + Framer Motion layout animations)
-    agents/            AgentsView (search, sort, filter)
-    ask/               Ask the Knowledge Core button + panel
-    ui/                shared badges and department chips
+    map/                      d3-force layout + canvas engine
+    org/                      org chart, backlog, create/edit dialogs
+    drawer/                   agent panel: details, process steps, webhook
+    tasks/  runs/  panel/  onboarding/  shell/  ui/
+supabase/migrations/          schema, RLS, ingest_run
 ```
-
-## Editing `org.ts` to model your own company
-
-Everything the UI shows comes from `src/data/org.ts`. The UI adapts to any number of departments and agents: the map spaces hubs evenly around the ring, and the force layout places agents around their hub.
-
-All visible text is bilingual. Write it as `l("English", "Svenska")`. Agent names such as "Vega" are the same in both languages, so they are plain strings. Button and label text lives in `src/i18n/index.ts`.
-
-### Departments
-
-```ts
-export const departments: Department[] = [
-  { id: "sales", name: l("Sales", "Försäljning"), subtitle: l("conversations & deals", "samtal & affärer"), color: "#ff6a1f", agents: sales },
-  // ...
-];
-```
-
-- The order of this array is the clockwise order around the map.
-- `color` is used for the hub, the agent dots, the panel row and the Kanban cards. Keep it in the warm orange/red/amber family so it matches the theme.
-
-### Agents
-
-Each department's agents are defined with the `agents(departmentId, [...])` helper:
-
-```ts
-{
-  id: "vega",                    // unique, used by reportsTo and tasks
-  name: "Vega",
-  role: l("Account Executive", "Kundansvarig säljare"),
-  reportsTo: "atlas",            // another agent's id, or null for the department lead
-  automationLevel: level.part,   // level.doc | level.part | level.full
-  status: "working",             // optional starting status: idle (default) | working | blocked
-  tools: ["HubSpot", "Outlook"], // see ToolName in types.ts
-  process: [
-    auto("Prepare call brief from the knowledge base", "Förbereder samtalsunderlag från kunskapsbasen"),
-    manual("Run discovery call", "Håller behovsanalysmöte"),
-  ],
-}
-```
-
-- Give each department **one lead** (`reportsTo: null`). Every other agent reports to the lead or to another agent in the same department. The Org chart builds its tree from these links.
-- Use `auto(en, sv)` and `manual(en, sv)` to mark each process step. The drawer shows the steps as a stepper.
-- `automationLevel` feeds the "Runs without you" score: `fully = 1`, `partly = 0.5`, `documented = 0`, averaged across all agents.
-- To add a tool, add its name to `ToolName` in `types.ts` and map it to a generic icon in `components/drawer/toolIcons.tsx`.
-
-### Tasks
-
-```ts
-t("Proposal: annual service agreement", "Offert: årligt serviceavtal", "quill", "todo")
-```
-
-`t(english, swedish, agentId, column)`. The department comes from the agent. The column is one of `backlog | todo | in_progress | review | done`.
-
-### Simulation text
-
-- `knowledgeTopics[departmentId]`: what agents in that department "look up" when they read the knowledge base. These appear in the activity log.
-- `taskTemplates[departmentId]`: titles for tasks the simulator creates. `{client}` is replaced with a random entry from `clientNames`.
-- `blockReasons`: why an agent becomes blocked.
-- `COMPANY_NAME`, `COMPANY_TAGLINE`, `PRESENTED_BY` and `KNOWLEDGE_CORE_LABEL` set the panel header, the presenter credit in the top bar and the core label.
-- Keep customer names obviously fictional (`clientNames`) so the demo never looks like it shows a real company's data.
-
-## Performance notes
-
-- The layout is computed once with d3-force (a seeded, deterministic run of 400 ticks).
-- The canvas engine keeps its particles in typed arrays (struct of arrays) with no per-frame allocations. Glows are pre-rendered sprites drawn with `globalCompositeOperation = "lighter"`. The starfield is rendered once for each resize.
-- The simulator emits visual effects through `store/events.ts`, so particle bursts never cause React re-renders.
-- With `prefers-reduced-motion`, the map runs about 140 slower particles, turns off drift and camera easing, and slows the simulator.

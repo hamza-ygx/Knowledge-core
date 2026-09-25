@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2, Minus, Plus } from "lucide-react";
-import { KNOWLEDGE_CORE_LABEL, departments } from "@/data/org";
-import { useT } from "@/i18n";
+import { AUTOMATION_LABELS, KIND_LABELS, STATUS_LABELS } from "@/data/types";
 import { mono } from "@/app/fonts";
-import { simEvents } from "@/store/events";
+import { agentAutomation, automationLevel, groupSteps } from "@/lib/metrics";
+import { mapEvents } from "@/store/events";
 import { useOrgStore } from "@/store/useOrgStore";
 import { MapEngine, type Hit } from "./engine";
 import { computeLayout } from "./layout";
@@ -16,6 +16,8 @@ interface Props {
   insetRight: number;
   insetBottom?: number;
 }
+
+export const CORE_LABEL = "Knowledge Core";
 
 const sameHit = (a: Hit, b: Hit) =>
   a === b || (!!a && !!b && a.kind === b.kind && (a.kind === "core" || (a as { index: number }).index === (b as { index: number }).index));
@@ -30,10 +32,15 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
   const hoverRef = useRef<Hit>(null);
   const [hover, setHover] = useState<Hit>(null);
 
-  const layout = useMemo(() => computeLayout(departments), []);
+  const departments = useOrgStore((s) => s.departments);
   const agents = useOrgStore((s) => s.agents);
+  const steps = useOrgStore((s) => s.steps);
   const showHud = useOrgStore((s) => s.showHud);
-  const { t, tx } = useT();
+
+  // Rebuild the layout only when the structure changes; renames and recolours are patched in below.
+  const structure = departments.map((d) => d.id).join(",") + "|" + agents.map((a) => `${a.id}:${a.departmentId}`).join(",");
+  const layout = useMemo(() => computeLayout(useOrgStore.getState().departments, useOrgStore.getState().agents), [structure]);
+  const stepsByAgent = useMemo(() => groupSteps(steps), [steps]);
 
   // Stable node list for the keyboard overlay: core, then each hub followed by its agents.
   const focusables = useMemo(() => {
@@ -46,13 +53,13 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
   }, [layout]);
 
   const focusLabel = (hit: NonNullable<Hit>) => {
-    if (hit.kind === "core") return tx(KNOWLEDGE_CORE_LABEL);
+    if (hit.kind === "core") return CORE_LABEL;
     if (hit.kind === "hub") {
-      const d = departments[hit.index];
-      return t("map.hubAria", { name: tx(d.name), n: d.agents.length });
+      const h = layout.hubs[hit.index];
+      return `${h.name} department, ${h.agentCount} agents`;
     }
     const a = agents.find((x) => x.id === layout.agents[hit.index].id);
-    return a ? `${a.name}, ${tx(a.role)}` : "";
+    return a ? `${a.name}, ${a.role}` : "";
   };
 
   const setHoverHit = (hit: Hit) => {
@@ -70,11 +77,9 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
     if (!hit) return;
     if (hit.kind === "agent") s.selectAgent(layout.agents[hit.index].id);
     else if (hit.kind === "hub") {
-      s.setAutoTour(false);
       s.focusDept(layout.hubs[hit.index].id);
       engineRef.current?.focus(hit.index);
     } else {
-      s.setAutoTour(false);
       s.focusDept(null);
       engineRef.current?.resetView();
     }
@@ -89,7 +94,7 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
 
     const engine = new MapEngine(canvas, layout, {
       monoFont: mono.style.fontFamily,
-      coreLabel: KNOWLEDGE_CORE_LABEL,
+      coreLabel: CORE_LABEL,
       onFps: (fps) => {
         if (statsRef.current) statsRef.current.textContent = `${Math.round(fps)} FPS · ${engine.particleCount} particles`;
       },
@@ -118,8 +123,9 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
         });
       },
     });
-    engine.names = layout.agents.map((a) => useOrgStore.getState().agents.find((x) => x.id === a.id)?.name ?? a.id);
     engineRef.current = engine;
+    hoverRef.current = null;
+    setHover(null);
 
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     engine.setReducedMotion(mq.matches);
@@ -128,11 +134,20 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
 
     const syncFromStore = () => {
       const s = useOrgStore.getState();
-      engine.setStatuses(layout.agents.map((a) => s.agents.find((x) => x.id === a.id)?.status ?? "idle"));
+      const agentMap = new Map(s.agents.map((a) => [a.id, a]));
+      const deptMap = new Map(s.departments.map((d) => [d.id, d]));
+      const grouped = groupSteps(s.steps);
+      // Patch labels and colours in place so edits show without rebuilding the layout.
+      layout.hubs.forEach((h) => {
+        const d = deptMap.get(h.id);
+        if (d) Object.assign(h, { name: d.name, subtitle: d.subtitle, color: d.color });
+      });
+      layout.agents.forEach((a) => (a.color = layout.hubs[a.hubIndex].color));
+      engine.names = layout.agents.map((a) => agentMap.get(a.id)?.name ?? "");
+      engine.setStatuses(layout.agents.map((a) => agentMap.get(a.id)?.status ?? "idle"));
+      engine.setAutomation(layout.agents.map((a) => agentAutomation(grouped.get(a.id) ?? [])));
       engine.highlightHub = hubIdx(s.hoveredDeptId);
       engine.selectedAgent = s.selectedAgentId ? (byId.get(s.selectedAgentId) ?? -1) : -1;
-      engine.lang = s.lang;
-      engine.setSpotlight(s.spotlightAgentIds.map((id) => byId.get(id) ?? -1).filter((i) => i >= 0));
     };
     syncFromStore();
     engine.focus(hubIdx(useOrgStore.getState().focusDeptId));
@@ -140,10 +155,10 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
     const unsub = useOrgStore.subscribe((s, prev) => {
       if (
         s.agents !== prev.agents ||
+        s.departments !== prev.departments ||
+        s.steps !== prev.steps ||
         s.hoveredDeptId !== prev.hoveredDeptId ||
-        s.selectedAgentId !== prev.selectedAgentId ||
-        s.lang !== prev.lang ||
-        s.spotlightAgentIds !== prev.spotlightAgentIds
+        s.selectedAgentId !== prev.selectedAgentId
       ) {
         syncFromStore();
       }
@@ -151,11 +166,11 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
       if (s.resetNonce !== prev.resetNonce) engine.resetView();
     });
 
-    const offSim = simEvents.on((ev) => {
+    const offSim = mapEvents.on((ev) => {
       const i = byId.get(ev.agentId);
       if (i === undefined) return;
-      if (ev.type === "kb-read") engine.emitKbRead(i);
-      else engine.emitTaskFlow(i, ev.direction);
+      if (ev.type === "run-started") engine.emitTaskFlow(i, "out");
+      else engine.emitRunResult(i, ev.ok);
     });
 
     const ro = new ResizeObserver(() => engine.resize(wrap.clientWidth, wrap.clientHeight));
@@ -166,7 +181,6 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
       e.preventDefault();
       const r = canvas.getBoundingClientRect();
       engine.zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0015));
-      useOrgStore.getState().setAutoTour(false);
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
@@ -209,7 +223,6 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
       if (!d.moved && Math.hypot(dx, dy) > 4) {
         d.moved = true;
         canvasRef.current!.setPointerCapture(d.id);
-        useOrgStore.getState().setAutoTour(false);
       }
       if (d.moved) {
         engine.panBy(dx, dy);
@@ -284,37 +297,41 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
   /* ------------------------------ tooltip ------------------------------ */
   let tip: React.ReactNode = null;
   if (hover?.kind === "agent") {
-    const a = agents.find((x) => x.id === layout.agents[hover.index].id);
+    const a = agents.find((x) => x.id === layout.agents[hover.index]?.id);
     if (a) {
+      const own = stepsByAgent.get(a.id) ?? [];
+      const auto = agentAutomation(own);
       tip = (
         <>
           <div className="text-[13px] font-semibold text-white">{a.name}</div>
-          <div className="text-[11px] text-white/60">{tx(a.role)}</div>
+          <div className="text-[11px] text-white/60">{a.role || KIND_LABELS[a.kind]}</div>
           <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em]">
-            <span className="text-orange-300">{t(`auto.${a.automationLevel}`)}</span>
+            <span className="text-orange-300">
+              {AUTOMATION_LABELS[automationLevel(auto)]} · {own.filter((x) => x.automated).length}/{own.length}
+            </span>
             <span className="text-white/30">·</span>
             <span className={a.status === "blocked" ? "text-red-400" : a.status === "working" ? "text-amber-200" : "text-white/50"}>
-              {t(`status.${a.status}`)}
+              {STATUS_LABELS[a.status]}
             </span>
           </div>
         </>
       );
     }
-  } else if (hover?.kind === "hub") {
-    const d = departments[hover.index];
+  } else if (hover?.kind === "hub" && layout.hubs[hover.index]) {
+    const h = layout.hubs[hover.index];
     tip = (
       <>
-        <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: d.color }}>
-          {tx(d.name)}
+        <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: h.color }}>
+          {h.name}
         </div>
-        <div className="text-[11px] text-white/60">{t("map.hubHint", { n: d.agents.length })}</div>
+        <div className="text-[11px] text-white/60">Click to zoom into {h.agentCount} agents</div>
       </>
     );
   } else if (hover?.kind === "core") {
     tip = (
       <>
-        <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-300">{tx(KNOWLEDGE_CORE_LABEL)}</div>
-        <div className="text-[11px] text-white/60">{t("map.coreHint", { n: agents.length })}</div>
+        <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-300">{CORE_LABEL}</div>
+        <div className="text-[11px] text-white/60">Every agent reports its runs here · click to reset view</div>
       </>
     );
   }
@@ -325,7 +342,7 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
       className="noise absolute inset-0 overflow-hidden bg-[#07070a] outline-none"
       onKeyDown={onKeyDown}
       role="application"
-      aria-label={t("map.aria")}
+      aria-label="Organisation map. Tab through nodes, Enter to open. Plus and minus zoom, arrow keys pan, 0 resets."
     >
       <canvas
         ref={canvasRef}
@@ -375,23 +392,25 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
       </div>
 
       {/* Legend */}
+      {agents.length > 0 && (
       <div
         className="pointer-events-none absolute bottom-4 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45"
         style={{ left: insetLeft + 20 }}
       >
         <span className="flex items-center gap-1.5">
-          <i className="h-2 w-2 rounded-full bg-[#ffe6cf] shadow-[0_0_8px_#ff8a3d]" /> {t("map.working")}
+          <i className="h-2 w-2 rounded-full bg-[#ffe6cf] shadow-[0_0_8px_#ff8a3d]" /> Running
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="h-1.5 w-1.5 rounded-full bg-[#ff6a1f]/80" /> {t("map.idle")}
+          <i className="h-1.5 w-1.5 rounded-full bg-[#ff6a1f]/80" /> Idle
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="h-2 w-2 rounded-full bg-[#ff4a3a] ring-1 ring-red-500/70 ring-offset-1 ring-offset-black" /> {t("map.blocked")}
+          <i className="h-2 w-2 rounded-full bg-[#ff4a3a] ring-1 ring-red-500/70 ring-offset-1 ring-offset-black" /> Last run failed
         </span>
         <span className="flex items-center gap-1.5">
-          <i className="h-1.5 w-1.5 rounded-full bg-[#ffb020] shadow-[0_0_6px_#ffb020]" /> {t("map.kbRead")}
+          <i className="h-2.5 w-2.5 rounded-full border-2 border-[#ffb020] border-l-white/15 border-b-white/15" /> Automated share
         </span>
       </div>
+      )}
 
       <div className="absolute bottom-4 flex items-center gap-3 transition-[right] duration-300" style={{ right: insetRight + 16 }}>
         <span
@@ -400,10 +419,10 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
           aria-hidden
         />
         <div className="glass flex overflow-hidden rounded-full">
-          <button type="button" className="map-ctl" onClick={() => zoomButton(1.25)} aria-label={t("map.zoomIn")}>
+          <button type="button" className="map-ctl" onClick={() => zoomButton(1.25)} aria-label="Zoom in">
             <Plus size={14} />
           </button>
-          <button type="button" className="map-ctl" onClick={() => zoomButton(0.8)} aria-label={t("map.zoomOut")}>
+          <button type="button" className="map-ctl" onClick={() => zoomButton(0.8)} aria-label="Zoom out">
             <Minus size={14} />
           </button>
           <button
@@ -413,7 +432,7 @@ export default function MapView({ insetLeft, insetTop, insetRight, insetBottom =
               useOrgStore.getState().focusDept(null);
               engineRef.current?.resetView();
             }}
-            aria-label={t("map.fit")}
+            aria-label="Fit whole organisation"
           >
             <Maximize2 size={13} />
           </button>

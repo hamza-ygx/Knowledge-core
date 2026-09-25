@@ -1,15 +1,13 @@
 // Fire-and-forget bus for visual effects. The map canvas listens here so
-// particle bursts never trigger React renders.
+// run pulses never trigger React renders.
 
-export type SimEvent =
-  | { type: "kb-read"; agentId: string }
-  | { type: "task-flow"; agentId: string; direction: "in" | "out" };
+export type MapEvent = { type: "run-started"; agentId: string } | { type: "run-finished"; agentId: string; ok: boolean };
 
-type Listener = (e: SimEvent) => void;
+type Listener = (e: MapEvent) => void;
 const listeners = new Set<Listener>();
 
-export const simEvents = {
-  emit(e: SimEvent) {
+export const mapEvents = {
+  emit(e: MapEvent) {
     listeners.forEach((l) => l(e));
   },
   on(l: Listener) {

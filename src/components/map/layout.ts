@@ -8,8 +8,7 @@ import {
   type SimulationLinkDatum,
   type SimulationNodeDatum,
 } from "d3-force";
-import type { Department } from "@/data/types";
-import type { L } from "@/i18n/core";
+import type { Agent, Department } from "@/data/types";
 
 export const HUB_RADIUS = 300;
 export const OUTER_RADIUS = 480;
@@ -24,8 +23,8 @@ export interface HubNode {
   y: number;
   angle: number;
   color: string;
-  name: L;
-  subtitle: L;
+  name: string;
+  subtitle: string;
   agentCount: number;
   /** Centroid of hub + agents; the camera frames this when drilling in. */
   cx: number;
@@ -58,12 +57,14 @@ interface ForceNode extends SimulationNodeDatum {
   ty?: number;
 }
 
-/** Deterministic layout: hubs on a ring, agents settled around them by d3-force. */
-export function computeLayout(departments: Department[]): MapLayout {
+/** Deterministic layout, recomputed whenever departments or agents are added or removed. */
+export function computeLayout(departmentList: Department[], agentList: Agent[]): MapLayout {
+  const departments = departmentList.map((d) => ({ ...d, agents: agentList.filter((a) => a.departmentId === d.id) }));
   const n = departments.length;
   const hubs: HubNode[] = departments.map((d, i) => {
-    // Offset by half a step so no hub sits directly above/below the core label.
-    const angle = -Math.PI / 2 - Math.PI / n + (i / n) * Math.PI * 2;
+    // With an even count, offset by half a step so no hub sits directly under the core label.
+    const offset = n >= 2 && n % 2 === 0 ? Math.PI / n : 0;
+    const angle = -Math.PI / 2 - offset + (i / n) * Math.PI * 2;
     return {
       id: d.id,
       index: i,

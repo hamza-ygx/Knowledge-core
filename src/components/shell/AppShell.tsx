@@ -2,166 +2,134 @@
 
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import AgentsView from "@/components/agents/AgentsView";
-import AskCore, { ASK_PANEL_WIDTH, AskButton } from "@/components/ask/AskCore";
 import AgentDrawer from "@/components/drawer/AgentDrawer";
-import KanbanView from "@/components/kanban/KanbanView";
 import MapView from "@/components/map/MapView";
+import Onboarding, { useOnboardingVisible } from "@/components/onboarding/Onboarding";
+import Modals from "@/components/org/Modals";
 import OrgView from "@/components/org/OrgView";
 import SidePanel, { PANEL_RAIL, PANEL_WIDTH } from "@/components/panel/SidePanel";
-import { LANGS, type Lang } from "@/i18n/core";
-import { useAutoTour, useSimulation } from "@/store/simulator";
+import RunsView from "@/components/runs/RunsView";
+import TasksView from "@/components/tasks/TasksView";
 import { useOrgStore, type View } from "@/store/useOrgStore";
 import TopBar from "./TopBar";
 
 const TOP_INSET = 60;
 const DRAWER_INSET = 440 + 24;
-const VIEW_KEYS: Record<string, View> = { "1": "map", "2": "org", "3": "kanban", "4": "agents" };
-/** Booth mode: after this long without input the demo returns to the map on Auto tour. */
-const IDLE_MS = 90_000;
-const LANG_KEY = "agent-org-map.lang";
+const VIEW_KEYS: Record<string, View> = { "1": "map", "2": "org", "3": "tasks", "4": "runs" };
 
-function useLanguagePersistence() {
-  const lang = useOrgStore((s) => s.lang);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LANG_KEY) as Lang | null;
-      if (saved && LANGS.includes(saved)) useOrgStore.getState().setLang(saved);
-    } catch {}
-    setLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.lang = lang;
-    if (!loaded) return;
-    try {
-      localStorage.setItem(LANG_KEY, lang);
-    } catch {}
-  }, [lang, loaded]);
-}
-
-function useIdleReturn() {
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const attract = () => {
-      const s = useOrgStore.getState();
-      s.selectAgent(null);
-      s.setAskOpen(false);
-      s.setSpotlight([]);
-      s.setView("map");
-      s.setSimPaused(false);
-      s.setAutoTour(true);
-    };
-    const bump = () => {
-      clearTimeout(timer);
-      timer = setTimeout(attract, IDLE_MS);
-    };
-    const events = ["pointermove", "pointerdown", "keydown", "wheel"] as const;
-    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
-    bump();
-    return () => {
-      clearTimeout(timer);
-      events.forEach((e) => window.removeEventListener(e, bump));
-    };
-  }, []);
-}
-
-function usePresenterKeys() {
+function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (e.metaKey || e.ctrlKey || e.altKey || el.closest("input, textarea, [contenteditable]")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || el.closest("input, textarea, select, [contenteditable], [role=dialog][aria-modal=true]")) return;
       const s = useOrgStore.getState();
       const v = VIEW_KEYS[e.key];
-      if (v) return s.setView(v);
-      switch (e.key.toLowerCase()) {
-        case "k":
-          s.setView("map");
-          s.setAskOpen(true);
-          break;
-        case "p":
-          s.setSimPaused(!s.simPaused);
-          break;
-        case "d":
-          s.toggleHud();
-          break;
-        case "l":
-          s.setLang(s.lang === "sv" ? "en" : "sv");
-          break;
-        case "f":
-          if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-          else document.documentElement.requestFullscreen?.().catch(() => {});
-          break;
-        default:
-          return;
-      }
-      e.preventDefault();
+      if (v) s.setView(v);
+      else if (e.key.toLowerCase() === "d") s.toggleHud();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 }
 
-export default function AppShell() {
-  useSimulation();
-  useAutoTour();
-  useLanguagePersistence();
-  useIdleReturn();
-  usePresenterKeys();
-
+export default function AppShell({ email }: { email: string }) {
+  const ready = useOrgStore((s) => s.ready);
+  const loadError = useOrgStore((s) => s.loadError);
   const view = useOrgStore((s) => s.view);
   const panelOpen = useOrgStore((s) => s.panelOpen);
   const drawerOpen = useOrgStore((s) => s.selectedAgentId !== null);
-  const askOpen = useOrgStore((s) => s.askOpen);
+  const toast = useOrgStore((s) => s.toast);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    setMounted(true);
+    const s = useOrgStore.getState();
+    s.load();
+    return s.subscribe();
+  }, []);
+  useShortcuts();
 
   const insetLeft = 16 + (panelOpen ? PANEL_WIDTH : PANEL_RAIL) + 8;
-  const mapInsetRight = drawerOpen ? DRAWER_INSET : askOpen ? ASK_PANEL_WIDTH + 24 : 0;
+  const onboarding = useOnboardingVisible();
+  const insetRight = drawerOpen ? DRAWER_INSET : 0;
+  const mapInsetRight = drawerOpen ? DRAWER_INSET : onboarding ? 440 + 40 : 0;
 
   return (
     <MotionConfig reducedMotion="user">
       <main className="relative h-dvh w-full overflow-hidden bg-[#07070a]">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={view}
-            className="absolute inset-0"
-            initial={{ opacity: 0, scale: 0.985 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.01 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
-            {view === "map" ? (
-              mounted && (
-                <>
-                  <MapView insetLeft={insetLeft} insetTop={TOP_INSET} insetRight={mapInsetRight} insetBottom={askOpen ? 0 : 56} />
-                  <div
-                    className="pointer-events-none absolute bottom-14 z-10 flex justify-center"
-                    style={{ left: insetLeft, right: mapInsetRight }}
-                  >
-                    <AskButton />
-                  </div>
-                </>
-              )
-            ) : (
-              <div
-                className="noise absolute inset-0 transition-[padding] duration-300"
-                style={{ paddingLeft: insetLeft, paddingTop: TOP_INSET, paddingRight: drawerOpen ? DRAWER_INSET : 0 }}
+        {!ready || !mounted ? (
+          <div className="grid h-full place-items-center">
+            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/40">Loading…</span>
+          </div>
+        ) : loadError ? (
+          <div className="grid h-full place-items-center px-4">
+            <div className="glass max-w-md rounded-2xl px-6 py-6 text-center">
+              <h1 className="text-[18px] font-semibold text-white">Couldn&apos;t load your data</h1>
+              <p className="mt-2 text-[13px] text-white/55">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => useOrgStore.getState().load()}
+                className="mt-4 rounded-lg border border-white/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-white/80 hover:text-white"
               >
-                {view === "org" && <OrgView />}
-                {view === "kanban" && <KanbanView />}
-                {view === "agents" && <AgentsView />}
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
+                Try again
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={view}
+                className="absolute inset-0"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                {view === "map" ? (
+                  <>
+                    <MapView insetLeft={insetLeft} insetTop={TOP_INSET} insetRight={mapInsetRight} />
+                    {onboarding && !drawerOpen && (
+                      <div className="pointer-events-none absolute right-4 top-[76px] z-10">
+                        <Onboarding />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div
+                    className="noise absolute inset-0 transition-[padding] duration-300"
+                    style={{ paddingLeft: insetLeft, paddingTop: TOP_INSET, paddingRight: insetRight }}
+                  >
+                    {view === "org" && <OrgView />}
+                    {view === "tasks" && <TasksView />}
+                    {view === "runs" && <RunsView />}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+            <SidePanel />
+            <AgentDrawer />
+            <Modals />
+          </>
+        )}
+        <TopBar email={email} />
 
-        <TopBar />
-        <SidePanel />
-        {view === "map" && <AskCore />}
-        <AgentDrawer />
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              key={toast.id}
+              role="status"
+              className={`fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-xl border px-4 py-2.5 text-[13px] shadow-2xl backdrop-blur ${
+                toast.tone === "error" ? "border-red-500/40 bg-[#2a0d0b]/95 text-red-200" : "border-white/15 bg-[#15100e]/95 text-white/85"
+              }`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+            >
+              {toast.text}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </MotionConfig>
   );
