@@ -18,7 +18,15 @@ export default function ProjectsView() {
   const projects = useOrgStore((s) => s.projects);
   const openModal = useOrgStore((s) => s.openModal);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const groups = useMemo(() => grouped(projects), [projects]);
+
+  useEffect(() => {
+    if (!inboxOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setInboxOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inboxOpen]);
 
   const run = async (kind: string, fn: () => Promise<void>) => {
     setExporting(kind);
@@ -53,8 +61,11 @@ export default function ProjectsView() {
             <Button disabled={!projects.length} onClick={() => window.open("/print/projects", "_blank", "noopener")}>
               <Printer size={13} /> Print / PDF
             </Button>
-            <Button tone="primary" onClick={() => openModal({ type: "project" })}>
+            <Button onClick={() => openModal({ type: "project" })}>
               <Plus size={13} /> Project
+            </Button>
+            <Button tone="primary" className="lg:hidden" onClick={() => setInboxOpen(true)}>
+              <Sparkles size={13} /> Organise
             </Button>
           </div>
         </div>
@@ -68,6 +79,9 @@ export default function ProjectsView() {
                 Throw everything you&apos;ve got at Organiser: notes, files from your USB drives, GitHub links. It sorts it into live, in
                 progress and up next.
               </p>
+              <Button tone="primary" className="mx-auto mt-4 lg:hidden" onClick={() => setInboxOpen(true)}>
+                <Sparkles size={13} /> Open the inbox
+              </Button>
             </div>
           ) : (
             groups.map((g) => (
@@ -88,7 +102,8 @@ export default function ProjectsView() {
         </div>
       </div>
 
-      <Inbox />
+      {inboxOpen && <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setInboxOpen(false)} aria-hidden />}
+      <Inbox open={inboxOpen} onClose={() => setInboxOpen(false)} />
     </div>
   );
 }
@@ -160,7 +175,7 @@ function approxChars(f: File) {
   return f.size;
 }
 
-function Inbox() {
+function Inbox({ open, onClose }: { open: boolean; onClose: () => void }) {
   const agents = useOrgStore((s) => s.agents);
   const intakes = useOrgStore((s) => s.intakes);
   const projectCount = useOrgStore((s) => s.projects.length);
@@ -236,9 +251,17 @@ function Inbox() {
   };
 
   return (
-    <aside className="scroll-thin hidden w-[380px] shrink-0 flex-col overflow-y-auto border-l border-white/5 px-5 py-5 lg:flex">
+    <aside
+      aria-label="Organiser inbox"
+      className={`scroll-thin w-[380px] shrink-0 flex-col overflow-y-auto border-l border-white/5 px-5 py-5 lg:static lg:z-auto lg:flex lg:max-w-none lg:bg-transparent ${
+        open ? "fixed inset-y-0 right-0 z-50 flex w-full max-w-[400px] bg-[#0a0809]" : "hidden"
+      }`}
+    >
       <div className="label flex items-center gap-2 text-[10px] text-[#ffb020]">
         <Sparkles size={12} /> Throw it at Organiser
+        <button type="button" onClick={onClose} aria-label="Close inbox" className="ml-auto rounded-full p-1 text-white/50 hover:bg-white/10 hover:text-white lg:hidden">
+          <X size={14} />
+        </button>
       </div>
       <p className="mt-1 text-[12px] leading-relaxed text-white/45">
         Paste notes, drop files, add links. Organiser sorts everything into projects and updates the ones it already knows.
