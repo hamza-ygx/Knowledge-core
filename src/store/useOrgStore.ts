@@ -95,6 +95,7 @@ const toIntake = (r: Row<"intakes">): Intake => ({
   summary: r.summary,
   error: r.error,
   createdAt: r.created_at,
+  costUsd: Number(r.cost_usd ?? 0),
 });
 
 const byCreatedDesc = (a: Intake, b: Intake) => b.createdAt.localeCompare(a.createdAt);

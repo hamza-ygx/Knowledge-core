@@ -2,8 +2,9 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { FileSpreadsheet, FileText, Loader2, Paperclip, Plus, Printer, RotateCw, Sparkles, Trash2, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PRIORITY_LABELS, type Intake, type Project } from "@/data/types";
+import { DEFAULT_MODEL, estimateCost, MAX_INPUT_CHARS, usd } from "@/lib/organiser/cost";
 import { exportExcel, exportWord, grouped } from "@/lib/organiser/export";
 import { useOrgStore } from "@/store/useOrgStore";
 import { Button, inputCls } from "@/components/ui/form";
@@ -143,9 +144,34 @@ function ProjectCard({ project: p, onOpen }: { project: Project; onOpen: () => v
 
 /* ------------------------------- inbox ------------------------------- */
 
+interface BudgetStatus {
+  model: string;
+  budget: number;
+  spent: number;
+  enabled: boolean;
+}
+
+/** Rough text size of a file before the server extracts it. */
+function approxChars(f: File) {
+  const e = f.name.toLowerCase().split(".").pop();
+  if (e === "docx") return f.size / 4;
+  if (e === "xlsx") return f.size / 3;
+  if (e === "pdf") return f.size / 8;
+  return f.size;
+}
+
 function Inbox() {
   const agents = useOrgStore((s) => s.agents);
   const intakes = useOrgStore((s) => s.intakes);
+  const projectCount = useOrgStore((s) => s.projects.length);
+  const [budget, setBudget] = useState<BudgetStatus | null>(null);
+  const refreshBudget = useCallback(async () => {
+    const res = await fetch("/api/organise").catch(() => null);
+    if (res?.ok) setBudget(await res.json());
+  }, []);
+  useEffect(() => {
+    refreshBudget();
+  }, [refreshBudget]);
   const [text, setText] = useState("");
   const [links, setLinks] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -155,7 +181,12 @@ function Inbox() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const totalBytes = files.reduce((s, f) => s + f.size, 0);
-  const canSend = !busy && (text.trim() || links.trim() || files.length) && totalBytes <= MAX_BYTES;
+  const typedChars = text.length + links.length;
+  const approx = typedChars + files.reduce((s, f) => s + approxChars(f), 0);
+  const tooLong = typedChars > MAX_INPUT_CHARS;
+  const overBudget = !!budget && budget.spent >= budget.budget;
+  const estimate = estimateCost(budget?.model ?? DEFAULT_MODEL, Math.min(approx, MAX_INPUT_CHARS), projectCount);
+  const canSend = !busy && (text.trim() || links.trim() || files.length) && totalBytes <= MAX_BYTES && !tooLong;
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
@@ -173,10 +204,13 @@ function Inbox() {
           : { body: JSON.stringify({ ...body, agentId: agentId || null }), headers: { "Content-Type": "application/json" } }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 202) setResult({ tone: "info", text: data.message ?? "Saved to the inbox." });
+      if (res.status === 202 || res.status === 402) setResult({ tone: "info", text: data.message ?? "Saved to the inbox." });
       else if (!res.ok) setResult({ tone: "error", text: data.error ?? `Something went wrong (${res.status}).` });
       else {
-        setResult({ tone: "ok", text: `${data.summary} ${data.created} new, ${data.updated} updated.` });
+        setResult({
+          tone: "ok",
+          text: `${data.summary} ${data.created} new, ${data.updated} updated.${typeof data.costUsd === "number" ? ` Cost ${usd(data.costUsd)}.` : ""}`,
+        });
         if (body instanceof FormData) {
           setText("");
           setLinks("");
@@ -184,6 +218,7 @@ function Inbox() {
         }
       }
       await useOrgStore.getState().load();
+      refreshBudget();
     } catch {
       setResult({ tone: "error", text: "Couldn't reach the server. Check your connection." });
     } finally {
@@ -275,7 +310,16 @@ function Inbox() {
           </>
         )}
       </Button>
-      {busy && <p className="mt-2 text-center text-[11px] text-white/40">This can take up to a minute for a big batch.</p>}
+      <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-white/40">
+        <span>{tooLong ? <span className="text-red-300">Too long: split into batches of {MAX_INPUT_CHARS.toLocaleString()} characters</span> : `≈ ${usd(estimate)} for this batch`}</span>
+        {budget && (
+          <span className={overBudget ? "text-red-300" : ""} title={`Model: ${budget.model}`}>
+            {usd(budget.spent)} of {usd(budget.budget)} used
+          </span>
+        )}
+      </div>
+      {budget && !budget.enabled && <p className="mt-1 text-[10.5px] text-[#ffcf70]/80">No API key yet: items are saved and wait in the inbox.</p>}
+      {busy && <p className="mt-2 text-center text-[11px] text-white/40">Usually 5–20 seconds.</p>}
       {result && (
         <p
           role="status"
@@ -319,7 +363,10 @@ function IntakeRow({ intake: i, busy, onRetry }: { intake: Intake; busy: boolean
       <button type="button" className="w-full text-left" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
           <span className={badge}>{i.status}</span>
-          <span className="text-white/35">{timeAgo(i.createdAt)}</span>
+          <span className="text-white/35">
+            {i.costUsd > 0 && `${usd(i.costUsd)} · `}
+            {timeAgo(i.createdAt)}
+          </span>
         </div>
         <div className="mt-1 line-clamp-2 text-[12px] text-white/65">{i.summary ?? (preview || `${i.files.length} files`)}</div>
       </button>

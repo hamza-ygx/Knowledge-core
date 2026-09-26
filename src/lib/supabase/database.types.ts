@@ -91,11 +91,15 @@ export type Database = {
       };
       intakes: {
         Row: {
+          cost_usd: number;
           created_at: string;
           error: string | null;
           files: Json;
           id: string;
+          input_tokens: number;
           links: string;
+          model: string | null;
+          output_tokens: number;
           owner_id: string;
           processed_at: string | null;
           status: string;
@@ -103,11 +107,15 @@ export type Database = {
           text: string;
         };
         Insert: {
+          cost_usd?: number;
           created_at?: string;
           error?: string | null;
           files?: Json;
           id?: string;
+          input_tokens?: number;
           links?: string;
+          model?: string | null;
+          output_tokens?: number;
           owner_id?: string;
           processed_at?: string | null;
           status?: string;
@@ -115,11 +123,15 @@ export type Database = {
           text?: string;
         };
         Update: {
+          cost_usd?: number;
           created_at?: string;
           error?: string | null;
           files?: Json;
           id?: string;
+          input_tokens?: number;
           links?: string;
+          model?: string | null;
+          output_tokens?: number;
           owner_id?: string;
           processed_at?: string | null;
           status?: string;

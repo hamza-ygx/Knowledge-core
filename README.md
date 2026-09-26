@@ -42,11 +42,23 @@ Click an agent anywhere to open its panel. There you can edit its details and pr
 
 1. Add your key: create one at console.anthropic.com → API keys. Add it in Vercel as `ANTHROPIC_API_KEY` (server-only) and redeploy. Usage is billed per request; check it under the console's Usage page.
 2. Open **Projects** (`4`). Paste anything into the inbox, add links, and drop files: txt, md, csv, json, docx, xlsx or pdf, up to 10 files and 4 MB. Then click **Organise**.
-3. Claude (`claude-opus-5`, medium effort) gets your current register plus the new material. It returns new or changed projects as structured JSON, updating existing projects instead of duplicating them. If Claude declines a request, the API retries on its recommended fallback model (`fallbacks: "default"`).
+3. Claude gets a compact copy of your current register plus the new material. It answers with a *patch*: only new projects and the fields that change on existing ones. That keeps the expensive output tokens down.
 4. Each organise run is recorded as a run of the agent chosen under "Run as", so it pulses on the map and shows in Runs with its token usage.
 5. Export with **Excel**, **Word** or **Print / PDF** (the print page opens your browser's print dialog; choose "Save as PDF").
 
 Without a key, material is saved as a **pending** inbox item. **Organise now** in the inbox history processes it once a key is set. Fragments Claude can't place in any project are listed under that inbox item.
+
+### Cost controls (built for a small prepaid balance)
+
+| Control | Default | What it does |
+| --- | --- | --- |
+| Model | `claude-haiku-4-5` ($1 / $5 per million input/output tokens) | Cheapest current model with structured output. Set `ORGANISER_MODEL=claude-sonnet-5` for harder batches (about 2× the price). |
+| File reading | on the server, for free | PDFs, Word and Excel files become plain text before Claude sees them. Scanned PDFs without a text layer are skipped. |
+| Input cap | 60,000 characters per run | Larger batches are refused with a message, never silently cut. |
+| Output cap | 6,000 tokens per run | Bounds the most a single run can cost. |
+| Budget | `ORGANISER_BUDGET_USD=5` | New runs stop once recorded spend reaches it; material is still saved to the inbox. |
+
+A typical run of about 3k tokens in and 800 out costs about **$0.007**, so $5 covers several hundred runs. The worst case at both caps is about $0.05. The inbox shows an estimate before you click, the cost of every run, and the total spent. These figures use the list prices in `src/lib/organiser/cost.ts`; update them if Anthropic's prices change.
 
 The prompt and output schema live in `src/lib/organiser/prompt.ts`, and file reading in `src/lib/organiser/extract.ts`.
 

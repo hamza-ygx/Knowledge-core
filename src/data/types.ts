@@ -120,6 +120,7 @@ export interface Intake {
   summary: string | null;
   error: string | null;
   createdAt: string;
+  costUsd: number;
 }
 
 export const PROJECT_STATUS_ORDER: ProjectStatus[] = ["active", "live", "upcoming", "paused", "idea", "done"];
